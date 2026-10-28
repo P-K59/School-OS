@@ -198,7 +198,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [schools, setSchools] = useState<School[]>(initialSchools);
+  const [schools, setSchools] = useState<School[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_schools');
+        if (saved) return JSON.parse(saved);
+        const legacyCustom = localStorage.getItem('school_os_custom_schools');
+        if (legacyCustom) {
+          const parsed = JSON.parse(legacyCustom);
+          if (Array.isArray(parsed) && parsed.length > 0) return [...initialSchools, ...parsed];
+        }
+      } catch {}
+    }
+    return initialSchools;
+  });
   const [activeSchool, setActiveSchoolState] = useState<School>(initialSchools[0]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(demoUsers[1]); // Default: Dr. Ananya Sharma (Principal)
   const [role, setRoleState] = useState<UserRole>('SCHOOL_ADMIN');
@@ -214,12 +227,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     return initialStudents;
   });
-  const [invoicesList, setInvoicesList] = useState<FeeInvoice[]>(initialInvoices);
-  const [staffList, setStaffList] = useState<StaffMember[]>(initialStaff);
-  const [payrollList, setPayrollList] = useState<PayrollRecord[]>(initialPayroll);
-  const [timetableList, setTimetableList] = useState<TimetableSlot[]>(initialTimetable);
-  const [activitiesList, setActivitiesList] = useState<AuditEvent[]>(initialAuditEvents);
-  const [financialsMap, setFinancialsMap] = useState<Record<string, SchoolFinancials>>(initialSchoolFinancials);
+  const [invoicesList, setInvoicesList] = useState<FeeInvoice[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_invoices');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialInvoices;
+  });
+  const [staffList, setStaffList] = useState<StaffMember[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_staff');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialStaff;
+  });
+  const [payrollList, setPayrollList] = useState<PayrollRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_payroll');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialPayroll;
+  });
+  const [timetableList, setTimetableList] = useState<TimetableSlot[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_timetable');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialTimetable;
+  });
+  const [activitiesList, setActivitiesList] = useState<AuditEvent[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_activities');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialAuditEvents;
+  });
+  const [financialsMap, setFinancialsMap] = useState<Record<string, SchoolFinancials>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('school_os_financials');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialSchoolFinancials;
+  });
   const [coursesList, setCoursesList] = useState<Course[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -328,15 +389,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const savedUserJson = localStorage.getItem('school_os_user');
       const savedSchoolId = localStorage.getItem('school_os_school_id');
-      const savedSchoolsJson = localStorage.getItem('school_os_custom_schools');
+      const savedSchoolsJson = localStorage.getItem('school_os_schools') || localStorage.getItem('school_os_custom_schools');
       
       let currentSchools = initialSchools;
       if (savedSchoolsJson) {
         try {
-          const customSchools: School[] = JSON.parse(savedSchoolsJson);
-          if (Array.isArray(customSchools) && customSchools.length > 0) {
-            currentSchools = [...initialSchools, ...customSchools];
-            setSchools(currentSchools);
+          const parsed = JSON.parse(savedSchoolsJson);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            currentSchools = parsed;
+            setSchools(parsed);
           }
         } catch {}
       }
@@ -450,10 +511,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isActive: true,
     };
 
-    // Update School state & persist custom schools
+    // Update School state & persist schools
     setSchools(prev => {
       const updated = [...prev, newSchool];
       try {
+        localStorage.setItem('school_os_schools', JSON.stringify(updated));
         const customOnly = updated.filter(s => !initialSchools.some(init => init.id === s.id));
         localStorage.setItem('school_os_custom_schools', JSON.stringify(customOnly));
       } catch {}
@@ -476,7 +538,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       attendanceRate: 100.0,
       status: 'ACTIVE',
     };
-    setStaffList(prev => [newStaffMember, ...prev]);
+    setStaffList(prev => {
+      const updated = [newStaffMember, ...prev];
+      try {
+        localStorage.setItem('school_os_staff', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
 
     // Audit Event
     const registrationEvent: AuditEvent = {
@@ -487,7 +555,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       time: 'Just now',
       category: 'AUTH',
     };
-    setActivitiesList(prev => [registrationEvent, ...prev]);
+    setActivitiesList(prev => {
+      const updated = [registrationEvent, ...prev];
+      try {
+        localStorage.setItem('school_os_activities', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
 
     // Authenticate and lock into this new school
     setCurrentUser(newPrincipal);
@@ -513,7 +587,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       time: 'Just now',
       category
     };
-    setActivitiesList(prev => [event, ...prev]);
+    setActivitiesList(prev => {
+      const updated = [event, ...prev];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_activities', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
   };
 
   // Super Admin -> Create / Provision School
@@ -2051,24 +2131,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const receiptNumber = `REC-2025-${Math.floor(100000 + Math.random() * 900000)}`;
     let targetStudentName = '';
 
-    setInvoicesList(prev => prev.map(inv => {
-      if (inv.id === invoiceId) {
-        targetStudentName = inv.studentName;
-        const newPaid = inv.paidAmount + amount;
-        const newStatus = newPaid >= (inv.totalAmount - inv.discountAmount) ? 'PAID' : 'PARTIAL';
-        return {
-          ...inv,
-          paidAmount: newPaid,
-          status: newStatus,
-        };
+    setInvoicesList(prev => {
+      const updated = prev.map(inv => {
+        if (inv.id === invoiceId) {
+          targetStudentName = inv.studentName;
+          const newPaid = inv.paidAmount + amount;
+          const newStatus: FeeInvoice['status'] = newPaid >= (inv.totalAmount - inv.discountAmount) ? 'PAID' : 'PARTIAL';
+          return {
+            ...inv,
+            paidAmount: newPaid,
+            status: newStatus,
+          };
+        }
+        return inv;
+      });
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_invoices', JSON.stringify(updated)); } catch {}
       }
-      return inv;
-    }));
+      return updated;
+    });
 
     // Update School Financials
     setFinancialsMap(prev => {
       const current = prev[activeSchool.id] || scopedFinancials;
-      return {
+      const updated = {
         ...prev,
         [activeSchool.id]: {
           ...current,
@@ -2076,6 +2162,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           totalOverdue: Math.max(0, current.totalOverdue - amount),
         }
       };
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_financials', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
     });
 
     // Add Audit Log
@@ -2087,7 +2177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       time: 'Just now',
       category: 'FEE',
     };
-    setActivitiesList(prev => [newEvent, ...prev]);
+    recordAuditEvent(newEvent.title, newEvent.detail, newEvent.category, newEvent.schoolId);
 
     return { success: true, receiptNumber };
   };
@@ -2098,11 +2188,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       id: `inv-${Date.now()}`,
       invoiceNumber: `INV-2025-${Math.floor(1000 + Math.random() * 9000)}`,
     };
-    setInvoicesList(prev => [newInvoice, ...prev]);
+    setInvoicesList(prev => {
+      const updated = [newInvoice, ...prev];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_invoices', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
 
     setFinancialsMap(prev => {
       const current = prev[activeSchool.id] || scopedFinancials;
-      return {
+      const updated = {
         ...prev,
         [activeSchool.id]: {
           ...current,
@@ -2110,6 +2206,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           totalOverdue: current.totalOverdue + (newInvoice.totalAmount - newInvoice.discountAmount - newInvoice.paidAmount),
         }
       };
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_financials', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
     });
   };
 
@@ -2119,7 +2219,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...member,
       id: `stf-${Date.now()}`,
     };
-    setStaffList(prev => [newStaff, ...prev]);
+    setStaffList(prev => {
+      const updated = [newStaff, ...prev];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_staff', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
   };
 
   const runPayrollForMonth = (month: string): { generatedCount: number; totalDisbursed: number } => {
@@ -2157,24 +2263,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     });
 
-    setPayrollList(prev => [...newRecords, ...prev.filter(p => !(p.schoolId === activeSchool.id && p.month === month))]);
+    setPayrollList(prev => {
+      const updated = [...newRecords, ...prev.filter(p => !(p.schoolId === activeSchool.id && p.month === month))];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_payroll', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
 
     // Audit Event
-    const newEvent: AuditEvent = {
-      id: `evt-${Date.now()}`,
-      schoolId: activeSchool.id,
-      title: `Monthly Payroll Executed (${month})`,
-      detail: `₹${totalDisbursed.toLocaleString('en-IN')} disbursed deterministically across ${schoolStaff.length} faculty/staff members.`,
-      time: 'Just now',
-      category: 'AUTH',
-    };
-    setActivitiesList(prev => [newEvent, ...prev]);
+    recordAuditEvent(
+      `Monthly Payroll Executed (${month})`,
+      `₹${totalDisbursed.toLocaleString('en-IN')} disbursed deterministically across ${schoolStaff.length} faculty/staff members.`,
+      'AUTH',
+      activeSchool.id
+    );
 
     return { generatedCount: schoolStaff.length, totalDisbursed };
   };
 
   const markPayrollPaid = (recordId: string) => {
-    setPayrollList(prev => prev.map(p => p.id === recordId ? { ...p, paymentStatus: 'PAID' } : p));
+    setPayrollList(prev => {
+      const updated = prev.map(p => p.id === recordId ? { ...p, paymentStatus: 'PAID' as const } : p);
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_payroll', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
   };
 
   // Timetable Mutators with Conflict Detection
@@ -2215,12 +2330,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       schoolId: activeSchool.id,
     };
 
-    setTimetableList(prev => [...prev, newSlot]);
+    setTimetableList(prev => {
+      const updated = [...prev, newSlot];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_timetable', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
     return { success: true };
   };
 
   const deleteTimetableSlot = (slotId: string) => {
-    setTimetableList(prev => prev.filter(t => t.id !== slotId));
+    setTimetableList(prev => {
+      const updated = prev.filter(t => t.id !== slotId);
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_timetable', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
   };
 
   const updateSchoolBranding = (brandingData: Partial<School>) => {

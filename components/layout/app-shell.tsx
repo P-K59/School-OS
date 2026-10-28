@@ -101,6 +101,11 @@ function AppShellContent({ children }: AppShellProps) {
           setActiveSchool(authorizedSchool, true);
         }
       }
+    } else if (pathname.startsWith('/student')) {
+      if (currentUser.role !== 'STUDENT' && currentUser.role !== 'SUPER_ADMIN') {
+        setSecurityNotice('Restricted Area: The cadet portal is reserved for student accounts.');
+        router.replace('/school?error=unauthorized_student');
+      }
     }
   }, [pathname, currentUser, activeSchool.id, schools, setActiveSchool, router]);
 

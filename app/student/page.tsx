@@ -71,14 +71,7 @@ export default function StudentPortalPage() {
 function GamifiedStudentPortal() {
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'home';
-  const { currentUser, role, loginAsRole } = useAuth();
-
-  // Enforce Student Persona on /student
-  useEffect(() => {
-    if (role !== 'STUDENT') {
-      loginAsRole('STUDENT');
-    }
-  }, [role, loginAsRole]);
+  const { currentUser, role } = useAuth();
 
   // Gamification state with localStorage persistence
   const [studentXp, setStudentXp] = useState<number>(1820);
