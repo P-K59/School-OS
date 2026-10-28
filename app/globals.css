@@ -1,0 +1,238 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 238 84% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 238 84% 59%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 238 84% 59%;
+  }
+
+  body {
+    font-family: var(--font-sans), 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #f8fafc;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Luxury Light Theme Glassmorphism & Depth */
+.luxury-glass {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 1px 3px 0 rgba(16, 24, 40, 0.04), 0 10px 24px -4px rgba(16, 24, 40, 0.04);
+}
+
+.luxury-glass-glow {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 246, 255, 0.92) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(165, 180, 252, 0.5);
+  box-shadow: 0 12px 32px -4px rgba(99, 102, 241, 0.1), 0 1px 3px 0 rgba(16, 24, 40, 0.04);
+}
+
+.luxury-mesh-bg {
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.07) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(6, 182, 212, 0.06) 0px, transparent 45%),
+    radial-gradient(at 50% 100%, rgba(139, 92, 246, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.04) 0px, transparent 50%);
+}
+
+.subtle-grid-pattern {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(226, 232, 240, 0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(226, 232, 240, 0.4) 1px, transparent 1px);
+}
+
+/* Card hover lift effect with gradient borders */
+.luxury-card-hover {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.luxury-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.09), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+/* Shimmer Pill */
+.shimmer-badge {
+  background: linear-gradient(90deg, rgba(238, 242, 255, 1) 0%, rgba(224, 231, 255, 0.6) 50%, rgba(238, 242, 255, 1) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 3s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* 3D Tactile Buttons & Dynamic Hover Effects */
+.btn-3d-primary {
+  background: linear-gradient(180deg, #4f46e5 0%, #4338ca 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 0 0 #312e81, 0 6px 12px rgba(79, 70, 229, 0.22);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-3d-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 0 #312e81, 0 10px 18px rgba(79, 70, 229, 0.32);
+}
+.btn-3d-primary:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #312e81, 0 3px 6px rgba(79, 70, 229, 0.2);
+}
+
+.btn-3d-secondary {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 3px 0 0 #cbd5e1, 0 4px 8px rgba(15, 23, 42, 0.04);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-3d-secondary:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 5px 0 0 #94a3b8, 0 8px 14px rgba(15, 23, 42, 0.08);
+}
+.btn-3d-secondary:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #cbd5e1, 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+.btn-3d-success {
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 0 0 #047857, 0 6px 12px rgba(16, 185, 129, 0.25);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-3d-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 0 #047857, 0 10px 18px rgba(16, 185, 129, 0.35);
+}
+.btn-3d-success:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #047857, 0 3px 6px rgba(16, 185, 129, 0.2);
+}
+
+.btn-3d-amber {
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 0 0 #b45309, 0 6px 12px rgba(245, 158, 11, 0.25);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-3d-amber:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 0 #b45309, 0 10px 18px rgba(245, 158, 11, 0.35);
+}
+.btn-3d-amber:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #b45309, 0 3px 6px rgba(245, 158, 11, 0.2);
+}
+
+.card-3d {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 3px 0 0 #e2e8f0, 0 4px 10px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-3d:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 0 0 #cbd5e1, 0 14px 24px -4px rgba(15, 23, 42, 0.08);
+  border-color: rgba(199, 210, 254, 0.8);
+}
+
+/* Isometric Icon Base */
+.iso-icon-container {
+  box-shadow: 
+    -2px -2px 6px rgba(255,255,255,1), 
+    4px 4px 8px rgba(15,23,42,0.06),
+    inset -1px -1px 2px rgba(15,23,42,0.02), 
+    inset 2px 2px 4px rgba(255,255,255,0.8);
+}
+
+/* Custom Scrollbar for Luxury Light Mode */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.6);
+}
+
+/* 3D Dashboard Specific Enhancements */
+.sidebar-dark {
+  background: #0b0f19;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.nav-pill-active {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%);
+  color: #ffffff !important;
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45);
+}
+
+.quick-action-card {
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+.quick-action-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 16px -2px rgba(15, 23, 42, 0.08);
+}
+.quick-action-card:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.kpi-card-3d {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.kpi-card-3d:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -4px rgba(15, 23, 42, 0.09);
+  border-color: rgba(199, 210, 254, 0.9);
+}
