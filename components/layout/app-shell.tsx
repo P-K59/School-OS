@@ -501,7 +501,7 @@ function AppShellContent({ children }: AppShellProps) {
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200/90 shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-black text-emerald-800">
-                  Student Portal • Grade 6-A
+                  Student Portal • {currentUser?.gradeName || 'Grade 6'}{currentUser?.sectionName ? ` • ${currentUser.sectionName}` : ''}
                 </span>
               </div>
             )}
