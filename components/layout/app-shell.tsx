@@ -392,7 +392,7 @@ function AppShellContent({ children }: AppShellProps) {
          ========================================================================= */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto overflow-x-hidden">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-4 sm:px-6 flex items-center justify-between gap-4 shadow-2xs shrink-0">
+        <header className="sticky top-0 z-40 h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between gap-4 shadow-xs shrink-0">
           
           {/* Left: Mobile Toggle & Universal Search Input */}
           <div className="flex items-center gap-3 flex-1 max-w-md">

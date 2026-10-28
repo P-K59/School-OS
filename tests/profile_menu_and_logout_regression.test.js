@@ -213,11 +213,12 @@ test('Profile Menu, Logout & Role-Based UI Architecture', async (t) => {
     assert.equal(isOpen, false, 'Outside click must close dropdown');
   });
 
-  // 9. Dropdown stays within viewport constraints
-  await t.test('9. Dropdown styling classes enforce viewport boundary & internal scroll', () => {
-    const dropdownClasses = "absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 sm:max-w-sm rounded-2xl border border-slate-200/90 bg-white/98 backdrop-blur-md p-3.5 shadow-2xl z-50 animate-fade-in max-h-[calc(100vh-5rem)] overflow-y-auto focus:outline-none";
+  // 9. Dropdown stays within viewport constraints & solid opaque background
+  await t.test('9. Dropdown styling classes enforce viewport boundary, internal scroll & solid opacity', () => {
+    const dropdownClasses = "absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 sm:max-w-sm rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] z-50 animate-fade-in max-h-[calc(100vh-5rem)] overflow-y-auto focus:outline-none ring-1 ring-slate-900/5";
 
     assert.ok(dropdownClasses.includes('right-0'), 'Must align right to anchor button');
+    assert.ok(dropdownClasses.includes('bg-white'), 'Must have solid white background');
     assert.ok(dropdownClasses.includes('max-h-[calc(100vh-5rem)]'), 'Must constrain max height to viewport');
     assert.ok(dropdownClasses.includes('overflow-y-auto'), 'Must allow internal scrolling');
     assert.ok(dropdownClasses.includes('w-[calc(100vw-2rem)]'), 'Must prevent horizontal overflow on mobile');

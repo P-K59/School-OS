@@ -148,7 +148,7 @@ export function UserMenu() {
         aria-expanded={isOpen}
         aria-haspopup="menu"
         aria-label="User profile and account menu"
-        className="flex items-center gap-2 sm:gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+        className="flex items-center gap-2 sm:gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
       >
         <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center font-black text-xs shadow-xs shrink-0 ${
           isStudentRole
@@ -172,402 +172,437 @@ export function UserMenu() {
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-indigo-600' : ''}`} />
       </button>
 
-      {/* Profile Dropdown Panel */}
+      {/* Profile Dropdown Panel with solid background & click-away overlay */}
       {isOpen && (
-        <div
-          role="menu"
-          aria-orientation="vertical"
-          className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 sm:max-w-sm rounded-2xl border border-slate-200/90 bg-white/98 backdrop-blur-md p-3.5 shadow-2xl z-50 animate-fade-in max-h-[calc(100vh-5rem)] overflow-y-auto focus:outline-none"
-        >
-          {/* ===============================================================
-              1. STUDENT PROFILE MENU
-             =============================================================== */}
-          {isStudentRole && (
-            <div className="space-y-3">
-              {/* Profile Header */}
-              <div className="flex items-center gap-3 p-2.5 bg-gradient-to-br from-emerald-50/50 via-teal-50/30 to-slate-50 rounded-xl border border-emerald-100/80">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-                  {initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-slate-900 truncate">
-                    {displayName}
-                  </div>
-                  <div className="text-[11px] font-bold text-emerald-700 truncate">
-                    {currentUser?.gradeName || 'Grade 6'}{currentUser?.sectionName ? ` • ${currentUser.sectionName}` : ''}
-                  </div>
-                  <div className="text-[10px] font-mono text-slate-400 truncate">
-                    Cadet #{currentUser?.admissionNumber || 'STU-001'}
-                  </div>
-                </div>
-              </div>
+        <>
+          {/* Subtle click-away backdrop to prevent overlap confusion and capture outside clicks */}
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/15"
+            onClick={() => setIsOpen(false)}
+            aria-hidden="true"
+          />
 
-              {/* Assigned School (Strictly Read-Only Information) */}
-              <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2 select-none">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
-                      Enrolled School (Read-Only)
-                    </span>
-                    <span className="text-xs font-bold text-slate-800 truncate block">
-                      {activeSchool?.name || 'Assigned School'}
-                    </span>
+          <div
+            role="menu"
+            aria-orientation="vertical"
+            style={{ backgroundColor: '#ffffff', opacity: 1 }}
+            className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 sm:max-w-sm rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] z-50 animate-fade-in max-h-[calc(100vh-5rem)] overflow-y-auto focus:outline-none ring-1 ring-slate-900/5"
+          >
+            {/* ===============================================================
+                1. STUDENT PROFILE MENU
+               =============================================================== */}
+            {isStudentRole && (
+              <div className="space-y-3">
+                {/* Profile Header (Solid Emerald Tint) */}
+                <div
+                  style={{ backgroundColor: '#f0fdf4' }}
+                  className="flex items-center gap-3 p-2.5 rounded-xl border border-emerald-200 shadow-2xs"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-black text-slate-900 truncate">
+                      {displayName}
+                    </div>
+                    <div className="text-[11px] font-bold text-emerald-800 truncate">
+                      {currentUser?.gradeName || 'Grade 6'}{currentUser?.sectionName ? ` • ${currentUser.sectionName}` : ''}
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-500 truncate">
+                      Cadet #{currentUser?.admissionNumber || 'STU-001'}
+                    </div>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-200/70 text-[9px] font-bold font-mono text-slate-600 shrink-0">
-                  <Lock className="w-2.5 h-2.5 text-slate-400" />
-                  {activeSchool?.code || 'CBSE'}
-                </span>
-              </div>
 
-              {/* Authorized Student Menu Actions */}
-              <div className="space-y-1">
+                {/* Assigned School (Strictly Read-Only Information - Solid Slate) */}
+                <div
+                  style={{ backgroundColor: '#f8fafc' }}
+                  className="px-3 py-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2 select-none shadow-2xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Building2 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500 block">
+                        Enrolled School (Read-Only)
+                      </span>
+                      <span className="text-xs font-bold text-slate-800 truncate block">
+                        {activeSchool?.name || 'Assigned School'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-200 text-[9px] font-bold font-mono text-slate-700 shrink-0">
+                    <Lock className="w-2.5 h-2.5 text-slate-500" />
+                    {activeSchool?.code || 'CBSE'}
+                  </span>
+                </div>
+
+                {/* Authorized Student Menu Actions */}
+                <div className="space-y-1">
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/student?tab=profile');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-emerald-50"
+                  >
+                    <User className="w-4 h-4 text-slate-500 group-hover:text-emerald-600" />
+                    <span>My Profile &amp; Cadet ID</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/student?tab=learning');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-emerald-50"
+                  >
+                    <BookOpen className="w-4 h-4 text-slate-500" />
+                    <span>My Learning Track</span>
+                  </button>
+                </div>
+
+                {/* Subtle Divider */}
+                <div className="border-t border-slate-200 my-1" />
+
+                {/* Full-Width Sign Out Action (Solid Rose Background) */}
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/student?tab=profile');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50/70 transition-colors text-left cursor-pointer focus:outline-none focus:bg-emerald-50"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  style={{ backgroundColor: '#fff1f2' }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 shadow-2xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                 >
-                  <User className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-                  <span>My Profile &amp; Cadet ID</span>
+                  {isLoggingOut ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                      <span>Signing Out...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="w-4 h-4 text-rose-600" />
+                      <span>Sign Out</span>
+                    </>
+                  )}
                 </button>
+              </div>
+            )}
+
+            {/* ===============================================================
+                2. SCHOOL ADMIN / PRINCIPAL PROFILE MENU
+               =============================================================== */}
+            {isSchoolAdminRole && (
+              <div className="space-y-3">
+                {/* Profile Header (Solid Indigo Tint) */}
+                <div
+                  style={{ backgroundColor: '#eef2ff' }}
+                  className="flex items-center gap-3 p-2.5 rounded-xl border border-indigo-200 shadow-2xs"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-black text-slate-900 truncate">
+                      {displayName}
+                    </div>
+                    <div className="text-[11px] text-slate-600 truncate font-mono">
+                      {displayEmail}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        Principal &amp; Director
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Currently Assigned School (Read-Only Context - Solid Slate) */}
+                <div
+                  style={{ backgroundColor: '#f8fafc' }}
+                  className="px-3 py-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2 select-none shadow-2xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500 block">
+                        Assigned Institution
+                      </span>
+                      <span className="text-xs font-bold text-slate-800 truncate block">
+                        {activeSchool?.name}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-[9px] font-bold font-mono text-indigo-800 shrink-0">
+                    {activeSchool?.schoolType || 'CBSE'}
+                  </span>
+                </div>
+
+                {/* School Admin Navigation Actions */}
+                <div className="space-y-1">
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/school');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-indigo-50"
+                  >
+                    <Building2 className="w-4 h-4 text-slate-500" />
+                    <span>Institutional Dashboard</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/school/staff');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-indigo-50"
+                  >
+                    <Users className="w-4 h-4 text-slate-500" />
+                    <span>Faculty &amp; Staff Roster</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/school/settings');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-indigo-50"
+                  >
+                    <Settings className="w-4 h-4 text-slate-500" />
+                    <span>School Settings</span>
+                  </button>
+                </div>
+
+                {/* Subtle Divider */}
+                <div className="border-t border-slate-200 my-1" />
+
+                {/* Full-Width Sign Out Action (Solid Rose Background) */}
+                <button
+                  role="menuitem"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  style={{ backgroundColor: '#fff1f2' }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 shadow-2xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+                >
+                  {isLoggingOut ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                      <span>Signing Out...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="w-4 h-4 text-rose-600" />
+                      <span>Sign Out</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* ===============================================================
+                3. SUPER ADMIN (CENTRAL HQ) PROFILE MENU
+               =============================================================== */}
+            {isSuperAdminRole && (
+              <div className="space-y-3">
+                {/* Profile Header (Solid Purple Tint) */}
+                <div
+                  style={{ backgroundColor: '#faf5ff' }}
+                  className="flex items-center gap-3 p-2.5 rounded-xl border border-purple-200 shadow-2xs"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-700 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-black text-slate-900 truncate">
+                      {displayName}
+                    </div>
+                    <div className="text-[11px] text-purple-700 truncate font-mono">
+                      {displayEmail}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
+                        Super Admin
+                      </span>
+                      <span className="text-[10px] text-purple-600 font-medium">
+                        • Central HQ
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Platform Management Navigation Actions */}
+                <div className="space-y-1">
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/admin');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 hover:bg-purple-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-purple-50"
+                  >
+                    <Shield className="w-4 h-4 text-purple-500" />
+                    <span>Central HQ Dashboard</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/admin/schools');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 hover:bg-purple-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-purple-50"
+                  >
+                    <Building2 className="w-4 h-4 text-purple-500" />
+                    <span>Tenant Schools Directory</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/admin/pricing');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 hover:bg-purple-50 transition-colors text-left cursor-pointer focus:outline-none focus:bg-purple-50"
+                  >
+                    <Sparkles className="w-4 h-4 text-purple-500" />
+                    <span>Central Pricing Engine</span>
+                  </button>
+                </div>
+
+                {/* Persona Navigation Workflow (Authorized Super Admin Testing Only) */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="text-[10px] font-extrabold text-purple-700 uppercase tracking-wider px-2 mb-1.5 flex items-center gap-1.5">
+                    <Shield className="w-3 h-3 text-purple-600" />
+                    <span>Persona Preview (HQ Only)</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {superAdminRoleList.map((item) => {
+                      const Icon = item.icon;
+                      const isCurrent = role === item.role;
+                      return (
+                        <button
+                          role="menuitem"
+                          key={item.role}
+                          onClick={() => handleRoleSwitch(item.role, item.path)}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                            isCurrent
+                              ? 'bg-purple-100 text-purple-900 font-bold'
+                              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-3.5 h-3.5" />
+                            <span>{item.title}</span>
+                          </div>
+                          {isCurrent && <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Subtle Divider */}
+                <div className="border-t border-slate-200 my-1" />
+
+                {/* Full-Width Sign Out Action (Solid Rose Background) */}
+                <button
+                  role="menuitem"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  style={{ backgroundColor: '#fff1f2' }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 shadow-2xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+                >
+                  {isLoggingOut ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                      <span>Signing Out...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="w-4 h-4 text-rose-600" />
+                      <span>Sign Out</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* ===============================================================
+                4. FALLBACK (TEACHER / PARENT / OTHER ROLES)
+               =============================================================== */}
+            {!isStudentRole && !isSchoolAdminRole && !isSuperAdminRole && (
+              <div className="space-y-3">
+                <div
+                  style={{ backgroundColor: '#f8fafc' }}
+                  className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 shadow-2xs"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-black text-slate-900 truncate">
+                      {displayName}
+                    </div>
+                    <div className="text-[11px] text-slate-500 truncate font-mono">
+                      {displayEmail}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold border ${roleMeta.color}`}>
+                        {roleMeta.label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{ backgroundColor: '#f8fafc' }}
+                  className="px-3 py-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2 select-none shadow-2xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                        Institution
+                      </span>
+                      <span className="text-xs font-bold text-slate-800 truncate block">
+                        {activeSchool?.name}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-200 text-[9px] font-bold font-mono text-slate-600 shrink-0">
+                    {activeSchool?.code}
+                  </span>
+                </div>
+
+                <div className="border-t border-slate-200 my-1" />
 
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/student?tab=learning');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50/70 transition-colors text-left cursor-pointer focus:outline-none focus:bg-emerald-50"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  style={{ backgroundColor: '#fff1f2' }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 shadow-2xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                 >
-                  <BookOpen className="w-4 h-4 text-slate-400" />
-                  <span>My Learning Track</span>
+                  {isLoggingOut ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                      <span>Signing Out...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="w-4 h-4 text-rose-600" />
+                      <span>Sign Out</span>
+                    </>
+                  )}
                 </button>
               </div>
-
-              {/* Subtle Divider */}
-              <div className="border-t border-slate-100 my-1" />
-
-              {/* Full-Width Sign Out Action */}
-              <button
-                role="menuitem"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 border border-rose-100 hover:border-rose-200 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-              >
-                {isLoggingOut ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                    <span>Signing Out...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="w-4 h-4 text-rose-600" />
-                    <span>Sign Out</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* ===============================================================
-              2. SCHOOL ADMIN / PRINCIPAL PROFILE MENU
-             =============================================================== */}
-          {isSchoolAdminRole && (
-            <div className="space-y-3">
-              {/* Profile Header */}
-              <div className="flex items-center gap-3 p-2.5 bg-indigo-50/50 rounded-xl border border-indigo-100/70">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-                  {initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-slate-900 truncate">
-                    {displayName}
-                  </div>
-                  <div className="text-[11px] text-slate-500 truncate font-mono">
-                    {displayEmail}
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      Principal &amp; Director
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Currently Assigned School (Read-Only Context) */}
-              <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2 select-none">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
-                      Assigned Institution
-                    </span>
-                    <span className="text-xs font-bold text-slate-800 truncate block">
-                      {activeSchool?.name}
-                    </span>
-                  </div>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-indigo-100/70 text-[9px] font-bold font-mono text-indigo-700 shrink-0">
-                  {activeSchool?.schoolType || 'CBSE'}
-                </span>
-              </div>
-
-              {/* School Admin Navigation Actions */}
-              <div className="space-y-1">
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/school');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60 transition-colors text-left cursor-pointer focus:outline-none focus:bg-indigo-50"
-                >
-                  <Building2 className="w-4 h-4 text-slate-400" />
-                  <span>Institutional Dashboard</span>
-                </button>
-
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/school/staff');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60 transition-colors text-left cursor-pointer focus:outline-none focus:bg-indigo-50"
-                >
-                  <Users className="w-4 h-4 text-slate-400" />
-                  <span>Faculty &amp; Staff Roster</span>
-                </button>
-
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/school/settings');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60 transition-colors text-left cursor-pointer focus:outline-none focus:bg-indigo-50"
-                >
-                  <Settings className="w-4 h-4 text-slate-400" />
-                  <span>School Settings</span>
-                </button>
-              </div>
-
-              {/* Subtle Divider */}
-              <div className="border-t border-slate-100 my-1" />
-
-              {/* Full-Width Sign Out Action */}
-              <button
-                role="menuitem"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 border border-rose-100 hover:border-rose-200 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-              >
-                {isLoggingOut ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                    <span>Signing Out...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="w-4 h-4 text-rose-600" />
-                    <span>Sign Out</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* ===============================================================
-              3. SUPER ADMIN (CENTRAL HQ) PROFILE MENU
-             =============================================================== */}
-          {isSuperAdminRole && (
-            <div className="space-y-3">
-              {/* Profile Header */}
-              <div className="flex items-center gap-3 p-2.5 bg-purple-50/60 rounded-xl border border-purple-100">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-700 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-                  {initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-slate-900 truncate">
-                    {displayName}
-                  </div>
-                  <div className="text-[11px] text-purple-700 truncate font-mono">
-                    {displayEmail}
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
-                      Super Admin
-                    </span>
-                    <span className="text-[10px] text-purple-600 font-medium">
-                      • Central HQ
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Platform Management Navigation Actions */}
-              <div className="space-y-1">
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/admin');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 hover:bg-purple-50/60 transition-colors text-left cursor-pointer focus:outline-none focus:bg-purple-50"
-                >
-                  <Shield className="w-4 h-4 text-purple-500" />
-                  <span>Central HQ Dashboard</span>
-                </button>
-
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/admin/schools');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 hover:bg-purple-50/60 transition-colors text-left cursor-pointer focus:outline-none focus:bg-purple-50"
-                >
-                  <Building2 className="w-4 h-4 text-purple-500" />
-                  <span>Tenant Schools Directory</span>
-                </button>
-
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setIsOpen(false);
-                    router.push('/admin/pricing');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 hover:bg-purple-50/60 transition-colors text-left cursor-pointer focus:outline-none focus:bg-purple-50"
-                >
-                  <Sparkles className="w-4 h-4 text-purple-500" />
-                  <span>Central Pricing Engine</span>
-                </button>
-              </div>
-
-              {/* Persona Navigation Workflow (Authorized Super Admin Testing Only) */}
-              <div className="pt-2 border-t border-slate-100">
-                <div className="text-[10px] font-extrabold text-purple-700 uppercase tracking-wider px-2 mb-1.5 flex items-center gap-1.5">
-                  <Shield className="w-3 h-3 text-purple-600" />
-                  <span>Persona Preview (HQ Only)</span>
-                </div>
-                <div className="space-y-0.5">
-                  {superAdminRoleList.map((item) => {
-                    const Icon = item.icon;
-                    const isCurrent = role === item.role;
-                    return (
-                      <button
-                        role="menuitem"
-                        key={item.role}
-                        onClick={() => handleRoleSwitch(item.role, item.path)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          isCurrent
-                            ? 'bg-purple-50 text-purple-800 font-bold'
-                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Icon className="w-3.5 h-3.5" />
-                          <span>{item.title}</span>
-                        </div>
-                        {isCurrent && <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Subtle Divider */}
-              <div className="border-t border-slate-100 my-1" />
-
-              {/* Full-Width Sign Out Action */}
-              <button
-                role="menuitem"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 border border-rose-100 hover:border-rose-200 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-              >
-                {isLoggingOut ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                    <span>Signing Out...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="w-4 h-4 text-rose-600" />
-                    <span>Sign Out</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* ===============================================================
-              4. FALLBACK (TEACHER / PARENT / OTHER ROLES)
-             =============================================================== */}
-          {!isStudentRole && !isSchoolAdminRole && !isSuperAdminRole && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-                  {initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-slate-900 truncate">
-                    {displayName}
-                  </div>
-                  <div className="text-[11px] text-slate-500 truncate font-mono">
-                    {displayEmail}
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold border ${roleMeta.color}`}>
-                      {roleMeta.label}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2 select-none">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
-                      Institution
-                    </span>
-                    <span className="text-xs font-bold text-slate-800 truncate block">
-                      {activeSchool?.name}
-                    </span>
-                  </div>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-slate-200/70 text-[9px] font-bold font-mono text-slate-600 shrink-0">
-                  {activeSchool?.code}
-                </span>
-              </div>
-
-              <div className="border-t border-slate-100 my-1" />
-
-              <button
-                role="menuitem"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 border border-rose-100 hover:border-rose-200 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-              >
-                {isLoggingOut ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                    <span>Signing Out...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="w-4 h-4 text-rose-600" />
-                    <span>Sign Out</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
