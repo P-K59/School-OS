@@ -9,11 +9,29 @@ export async function GET(req: NextRequest) {
     if (roleAuth) return roleAuth;
 
     const { searchParams } = new URL(req.url);
-    // Student ID can come from query param or authenticated user header
-    const studentId = searchParams.get('studentId') || auth?.userId || 'usr-student-1';
+    const requestedStudentId = searchParams.get('studentId');
     const courseId = searchParams.get('courseId') || undefined;
 
+    // Strict student boundary: Student can only access their own records
+    let studentId = auth?.userId || 'usr-student-1';
+    if (auth?.role === 'STUDENT') {
+      if (requestedStudentId && requestedStudentId !== auth.userId && auth.userId !== 'usr-authenticated') {
+        return NextResponse.json({ error: 'Access denied: Students cannot access another student records' }, { status: 403 });
+      }
+      studentId = auth.userId;
+    } else if (requestedStudentId) {
+      studentId = requestedStudentId;
+    }
+
     const journey = await serverDb.getStudentActiveLearningJourney(studentId, courseId);
+
+    // School admin boundary: can only access students from their own school
+    if (auth?.role === 'SCHOOL_ADMIN' || auth?.role === 'TEACHER') {
+      if (auth.schoolId && journey.enrollment?.schoolId && journey.enrollment.schoolId !== auth.schoolId) {
+        return NextResponse.json({ error: 'Forbidden: Cross-tenant access denied to student records' }, { status: 403 });
+      }
+    }
+
     return NextResponse.json(journey);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch student learning journey' }, { status: 400 });
@@ -28,7 +46,17 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { action, studentId: reqStudentId, courseId, lectureNumber } = body;
-    const studentId = reqStudentId || auth?.userId || 'usr-student-1';
+
+    // Strict student boundary: Student can only submit progress for themselves
+    let studentId = auth?.userId || 'usr-student-1';
+    if (auth?.role === 'STUDENT') {
+      if (reqStudentId && reqStudentId !== auth.userId && auth.userId !== 'usr-authenticated') {
+        return NextResponse.json({ error: 'Access denied: Students cannot submit telemetry for another student' }, { status: 403 });
+      }
+      studentId = auth.userId;
+    } else if (reqStudentId) {
+      studentId = reqStudentId;
+    }
 
     if (!courseId || typeof lectureNumber !== 'number') {
       return NextResponse.json({ error: 'Missing required fields: courseId, lectureNumber' }, { status: 400 });

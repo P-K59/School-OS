@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../supabase/client';
+import { supabaseAdmin, isServiceRoleConfigured } from '../supabase/server-client';
 import { 
   School, 
   Student, 
@@ -1312,6 +1313,38 @@ class ProductionDatabaseManager {
       category: 'ADMISSION'
     });
 
+    this.saveToDisk();
+
+    // Synchronize to remote Supabase students table
+    try {
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        const { error: sbErr } = await supabaseAdmin.from('students').upsert([{
+          id: newStudent.id,
+          school_id: newStudent.schoolId,
+          admission_number: newStudent.admissionNumber,
+          cadet_login_id: newStudent.credentials?.loginId || `CADET-${newStudent.admissionNumber}`,
+          first_name: newStudent.firstName,
+          last_name: newStudent.lastName,
+          grade_name: newStudent.gradeName,
+          section_name: newStudent.sectionName,
+          parent_name: newStudent.parentName,
+          parent_phone: newStudent.parentPhone,
+          current_xp: newStudent.currentXp || 100,
+          current_level: newStudent.currentLevel || 1,
+          current_streak: newStudent.currentStreak || 0,
+          status: newStudent.status || 'ACTIVE'
+        }], { onConflict: 'school_id,admission_number' });
+
+        if (sbErr && isServiceRoleConfigured) {
+          console.error('[SupabaseSync:Student] Error persisting student:', sbErr.message);
+        }
+      }
+    } catch (err: any) {
+      if (isServiceRoleConfigured) {
+        console.error('[SupabaseSync:Student] Exception persisting student:', err.message);
+      }
+    }
+
     return newStudent;
   }
 
@@ -1777,6 +1810,15 @@ class ProductionDatabaseManager {
     const student = this.students.find(s => s.id === studentId || s.credentials?.loginId === studentId);
     if (!student) throw new Error(`Student with ID '${studentId}' not found.`);
 
+    // Enforce inactive / suspended school barrier
+    const school = this.schools.find(s => s.id === student.schoolId);
+    if (school && (!school.isActive || school.suspensionDetails?.isSuspended || school.onboardingStatus === 'SUSPENDED')) {
+      throw new Error(`School portal access is suspended or inactive. Learning portal is disabled.`);
+    }
+    if (student.status === 'SUSPENDED') {
+      throw new Error(`Student account is suspended.`);
+    }
+
     // Find student enrollment
     let enrollment = this.courseEnrollments.find(e => e.studentId === student.id && (!courseId || e.courseId === courseId));
     if (!enrollment && this.courses.length > 0) {
@@ -1970,10 +2012,46 @@ class ProductionDatabaseManager {
         student.currentLevel = Math.max(1, Math.floor(student.currentXp / 500) + 1);
         student.currentStreak = (student.currentStreak || 0) + 1;
         result.newTotalXp = student.currentXp;
+
+        if (supabaseAdmin) {
+          try {
+            await supabaseAdmin.from('students').update({
+              current_xp: student.currentXp,
+              current_level: student.currentLevel,
+              current_streak: student.currentStreak,
+              updated_at: new Date().toISOString()
+            }).eq('id', studentId);
+          } catch (e) {
+            console.error('Non-blocking Supabase student XP sync error:', e);
+          }
+        }
       }
       enrollment.completedLessons = Object.values(enrollment.journeyStates).filter(s => s.journeyCompleted).length;
       enrollment.progressPercentage = Math.round((enrollment.completedLessons / 30) * 100);
       if (enrollment.progressPercentage >= 100) enrollment.status = 'COMPLETED';
+
+      if (supabaseAdmin) {
+        try {
+          await supabaseAdmin.from('course_enrollments').update({
+            progress_percentage: enrollment.progressPercentage,
+            completed_lessons: enrollment.completedLessons,
+            status: enrollment.status,
+            updated_at: new Date().toISOString()
+          }).eq('id', enrollment.id);
+
+          await supabaseAdmin.from('student_course_progress').upsert({
+            student_id: studentId,
+            course_id: courseId,
+            school_id: enrollment.schoolId,
+            enrollment_id: enrollment.id,
+            lessons_completed: enrollment.completedLessons,
+            xp_awarded: student ? student.currentXp : 0,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'student_id,course_id' });
+        } catch (e) {
+          console.error('Non-blocking Supabase student_course_progress sync error:', e);
+        }
+      }
     }
 
     this.saveToDisk();
@@ -2432,6 +2510,35 @@ class ProductionDatabaseManager {
     };
 
     this.saveToDisk();
+
+    // Synchronize to remote Supabase course_enrollments
+    try {
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function' && newEnrollments.length > 0) {
+        const rows = newEnrollments.map(e => ({
+          id: e.id,
+          school_id: e.schoolId,
+          course_id: e.courseId,
+          student_id: e.studentId,
+          batch_id: batchId,
+          student_login_id: e.studentLoginId,
+          grade_name: e.gradeName,
+          section_name: e.sectionName,
+          status: e.status,
+          completed_lessons: e.completedLessons || 0,
+          total_lessons: e.totalLessons || 30,
+          progress_percent: e.progressPercentage || 0,
+          quiz_score: e.quizScoreAverage || 0
+        }));
+        const { error: sbErr } = await supabaseAdmin.from('course_enrollments').upsert(rows);
+        if (sbErr && isServiceRoleConfigured) {
+          console.error('[SupabaseSync:Enrollment] Error persisting enrollments:', sbErr.message);
+        }
+      }
+    } catch (err: any) {
+      if (isServiceRoleConfigured) {
+        console.error('[SupabaseSync:Enrollment] Exception persisting enrollments:', err.message);
+      }
+    }
 
     await this.recordAuditEvent({
       schoolId: data.schoolId,

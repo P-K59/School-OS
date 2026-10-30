@@ -3,7 +3,7 @@
  * Supports Google Drive preview/embed streaming and provides a clean abstraction for future CDN migration.
  */
 
-import { VideoProviderType } from '../types/index';
+export type VideoProviderType = 'GOOGLE_DRIVE' | 'CLOUDFLARE_STREAM' | 'CUSTOM_CDN' | 'EMBED' | 'YOUTUBE' | 'S3_CLOUDFRONT' | 'LOCAL';
 
 export interface VideoPlaybackMetadata {
   provider: VideoProviderType;

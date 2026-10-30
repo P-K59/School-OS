@@ -282,7 +282,7 @@ export interface CourseModule {
   lessons: CourseLesson[];
 }
 
-export type VideoProviderType = 'GOOGLE_DRIVE' | 'CLOUDFLARE_STREAM' | 'CUSTOM_CDN' | 'EMBED';
+export type VideoProviderType = 'GOOGLE_DRIVE' | 'CLOUDFLARE_STREAM' | 'CUSTOM_CDN' | 'EMBED' | 'YOUTUBE' | 'S3_CLOUDFRONT' | 'LOCAL';
 export type SchedulePolicy = 'DAILY' | 'WEEKLY' | 'CUSTOM';
 export type UnlockPolicy = 'SCHEDULE_BASED' | 'SEQUENTIAL' | 'HYBRID_SCHEDULE_AND_COMPLETION';
 export type GameType = 'HARDWARE_MATCH' | 'CODING_SEQUENCE' | 'MEMORY_CARDS' | 'BUG_HUNTER' | 'LOGIC_CIRCUIT' | 'INTERACTIVE_SIMULATION';
