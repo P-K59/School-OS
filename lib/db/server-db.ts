@@ -290,6 +290,7 @@ class ProductionDatabaseManager {
         trainers: this.trainers,
         allocations: this.allocations,
         userProfiles: this.userProfiles,
+        courses: this.courses,
         schoolCourseAssignments: this.schoolCourseAssignments,
         courseEnrollments: this.courseEnrollments,
         auditEvents: this.auditEvents,
@@ -341,6 +342,15 @@ class ProductionDatabaseManager {
         }
         if (Array.isArray(data.allocations)) this.allocations = data.allocations;
         if (Array.isArray(data.userProfiles) && data.userProfiles.length > 0) this.userProfiles = data.userProfiles;
+        if (Array.isArray(data.courses) && data.courses.length > 0) {
+          const loadedCourseIds = new Set(data.courses.map((c: Course) => c.id));
+          PROD_SEED_COURSES.forEach(seedCourse => {
+            if (!loadedCourseIds.has(seedCourse.id)) {
+              data.courses.push(seedCourse);
+            }
+          });
+          this.courses = data.courses;
+        }
         if (Array.isArray(data.schoolCourseAssignments)) this.schoolCourseAssignments = data.schoolCourseAssignments;
         if (Array.isArray(data.courseEnrollments)) this.courseEnrollments = data.courseEnrollments;
         if (Array.isArray(data.auditEvents)) this.auditEvents = data.auditEvents;
@@ -1461,6 +1471,318 @@ class ProductionDatabaseManager {
     return [...this.courses];
   }
 
+  async getCourseById(courseId: string): Promise<Course | undefined> {
+    return this.courses.find(c => c.id === courseId || c.slug === courseId || c.code === courseId);
+  }
+
+  async createCourse(data: Omit<Course, 'id' | 'createdAt'>): Promise<Course> {
+    const courseCode = data.code || `CRS-${(data.category || 'STEM').slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+    const newCourse: Course = {
+      ...data,
+      id: `crs-${Date.now().toString().slice(-6)}`,
+      code: courseCode,
+      status: data.status || 'PUBLISHED',
+      isPublished: data.isPublished !== false,
+      isArchived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    this.courses.unshift(newCourse);
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Course Created in Catalog',
+      detail: `Super Admin published new curriculum '${newCourse.title}' (${newCourse.code}).`,
+      category: 'STEM'
+    });
+
+    return newCourse;
+  }
+
+  async updateCourse(courseId: string, updates: Partial<Course>): Promise<Course> {
+    const idx = this.courses.findIndex(c => c.id === courseId || c.slug === courseId);
+    if (idx === -1) {
+      throw new Error(`Course with ID '${courseId}' not found.`);
+    }
+
+    const updated: Course = {
+      ...this.courses[idx],
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    this.courses[idx] = updated;
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Course Catalog Updated',
+      detail: `Course '${updated.title}' (${updated.id}) configuration was updated by Super Admin.`,
+      category: 'STEM'
+    });
+
+    return updated;
+  }
+
+  async deleteCourse(courseId: string, force = false): Promise<{ success: boolean; deletedCourse: Course; affectedAssignments: number }> {
+    const idx = this.courses.findIndex(c => c.id === courseId || c.slug === courseId);
+    if (idx === -1) {
+      throw new Error(`Course with ID '${courseId}' not found.`);
+    }
+
+    const courseToDelete = this.courses[idx];
+    const activeAssignments = this.schoolCourseAssignments.filter(a => a.courseId === courseId && a.status === 'ACTIVE');
+    const enrolledStudents = this.courseEnrollments.filter(e => e.courseId === courseId);
+
+    if (!force && (activeAssignments.length > 0 || enrolledStudents.length > 0)) {
+      throw new Error(
+        `Cannot delete course '${courseToDelete.title}'. It is currently assigned to ${activeAssignments.length} partner school(s) with ${enrolledStudents.length} enrolled student(s). Please archive the course or revoke active assignments first.`
+      );
+    }
+
+    // Remove course and cascade inactive assignments if forced
+    this.courses.splice(idx, 1);
+    const affectedAssignments = activeAssignments.length;
+    if (force) {
+      this.schoolCourseAssignments = this.schoolCourseAssignments.filter(a => a.courseId !== courseId);
+    }
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Course Deleted from Catalog',
+      detail: `Course '${courseToDelete.title}' (${courseToDelete.id}) was permanently removed. (${affectedAssignments} assignments affected).`,
+      category: 'STEM'
+    });
+
+    return { success: true, deletedCourse: courseToDelete, affectedAssignments };
+  }
+
+  async archiveCourse(courseId: string, isArchived: boolean): Promise<Course> {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course with ID '${courseId}' not found.`);
+    return this.updateCourse(course.id, {
+      isArchived,
+      status: isArchived ? 'ARCHIVED' : (course.isPublished ? 'PUBLISHED' : 'DRAFT')
+    });
+  }
+
+  async duplicateCourse(courseId: string): Promise<Course> {
+    const original = await this.getCourseById(courseId);
+    if (!original) throw new Error(`Source course '${courseId}' not found for duplication.`);
+
+    const duplicated: Course = {
+      ...original,
+      id: `crs-${Date.now().toString().slice(-6)}`,
+      code: `${original.code || 'CRS'}-COPY`,
+      title: `${original.title} (Copy)`,
+      slug: `${original.slug}-copy-${Date.now().toString().slice(-4)}`,
+      status: 'DRAFT',
+      isPublished: false,
+      isArchived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    this.courses.unshift(duplicated);
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Course Cloned',
+      detail: `Super Admin duplicated '${original.title}' into draft '${duplicated.title}'.`,
+      category: 'STEM'
+    });
+
+    return duplicated;
+  }
+
+  async toggleCoursePublish(courseId: string, isPublished: boolean): Promise<Course> {
+    return this.updateCourse(courseId, {
+      isPublished,
+      status: isPublished ? 'PUBLISHED' : 'DRAFT'
+    });
+  }
+
+  async getCourseAnalytics(courseId: string) {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+
+    const assignments = this.schoolCourseAssignments.filter(a => a.courseId === course.id);
+    const enrollments = this.courseEnrollments.filter(e => e.courseId === course.id);
+    const activeEnrollments = enrollments.filter(e => e.status === 'ACTIVE' || e.status === 'IN_PROGRESS');
+    const completedEnrollments = enrollments.filter(e => e.status === 'COMPLETED');
+    const totalStudents = enrollments.length;
+    const avgProgress = totalStudents > 0 
+      ? Math.round(enrollments.reduce((sum, e) => sum + (e.progressPercentage || 0), 0) / totalStudents)
+      : 0;
+    const avgQuizScore = totalStudents > 0
+      ? Math.round(enrollments.reduce((sum, e) => sum + (e.quizScoreAverage || 0), 0) / totalStudents)
+      : 0;
+
+    return {
+      courseId: course.id,
+      title: course.title,
+      code: course.code,
+      totalAssignedSchools: assignments.length,
+      assignedSchools: assignments.map(a => ({ schoolId: a.schoolId, schoolName: a.schoolName, session: a.academicSession })),
+      totalEnrolledStudents: totalStudents,
+      activeEnrollmentsCount: activeEnrollments.length,
+      completedEnrollmentsCount: completedEnrollments.length,
+      completionPercentage: totalStudents > 0 ? Math.round((completedEnrollments.length / totalStudents) * 100) : 0,
+      averageProgress: avgProgress,
+      averageQuizScore: avgQuizScore,
+      pricingTiersCount: this.pricingRules.filter(p => p.courseId === course.id).length
+    };
+  }
+
+  async removeSchoolCourseAssignment(assignmentId: string): Promise<{ success: boolean; assignment: SchoolCourseAssignment }> {
+    const idx = this.schoolCourseAssignments.findIndex(a => a.id === assignmentId);
+    if (idx === -1) throw new Error(`Assignment with ID '${assignmentId}' not found.`);
+
+    const assignment = this.schoolCourseAssignments[idx];
+    this.schoolCourseAssignments.splice(idx, 1);
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: assignment.schoolId,
+      title: 'Course Assignment Revoked',
+      detail: `Course '${assignment.courseTitle}' assignment removed from ${assignment.schoolName}.`,
+      category: 'STEM'
+    });
+
+    return { success: true, assignment };
+  }
+
+  // Super Admin: Reassign School Principal / Responsible Administrator
+  async reassignSchoolPrincipal(
+    schoolId: string,
+    principalData: { firstName: string; lastName: string; email: string; phone?: string; designation?: string; newPassword?: string },
+    auditNote?: string
+  ): Promise<{ success: boolean; school: School; message: string }> {
+    const school = this.schools.find(s => s.id === schoolId || s.code === schoolId);
+    if (!school) throw new Error(`School with ID '${schoolId}' not found.`);
+
+    const previousPrincipal = school.principalName || 'Previous Administrator';
+    const newFullName = `${principalData.firstName} ${principalData.lastName}`.trim();
+
+    school.principalName = newFullName;
+    if (school.adminCredentials) {
+      school.adminCredentials.email = principalData.email.trim();
+      school.adminCredentials.loginId = principalData.email.trim();
+      if (principalData.newPassword) {
+        school.adminCredentials.temporaryPassword = principalData.newPassword.trim();
+      }
+      school.adminCredentials.provisionedBy = 'Super Admin Reassignment';
+    }
+
+    // Update or create user profile for this school administrator
+    let profile = this.userProfiles.find(u => u.schoolId === school.id && u.role === 'SCHOOL_ADMIN');
+    if (profile) {
+      profile.firstName = principalData.firstName;
+      profile.lastName = principalData.lastName;
+      profile.displayName = newFullName;
+      profile.email = principalData.email;
+      if (principalData.phone) profile.phone = principalData.phone;
+      if (principalData.designation) profile.designation = principalData.designation;
+    } else {
+      this.userProfiles.push({
+        id: `usr-admin-${Date.now()}`,
+        schoolId: school.id,
+        schoolName: school.name,
+        role: 'SCHOOL_ADMIN',
+        firstName: principalData.firstName,
+        lastName: principalData.lastName,
+        displayName: newFullName,
+        email: principalData.email,
+        phone: principalData.phone,
+        designation: principalData.designation || 'Principal & Director',
+        isActive: true,
+        status: 'ACTIVE'
+      });
+    }
+
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: school.id,
+      title: 'School Leadership Reassigned',
+      detail: `Principal of '${school.name}' reassigned from '${previousPrincipal}' to '${newFullName}' (${principalData.email}). Note: ${auditNote || 'Administrative transfer'}.`,
+      category: 'AUTH'
+    });
+
+    return { success: true, school, message: `Leadership for ${school.name} reassigned to ${newFullName} successfully.` };
+  }
+
+  // Super Admin: Transfer Administrator User to Another School
+  async transferAdministrator(
+    userId: string,
+    targetSchoolId: string,
+    auditNote?: string
+  ): Promise<{ success: boolean; user: UserProfile; message: string }> {
+    const user = this.userProfiles.find(u => u.id === userId || u.email === userId);
+    if (!user) throw new Error(`User with ID '${userId}' not found.`);
+
+    const sourceSchool = this.schools.find(s => s.id === user.schoolId);
+    const targetSchool = this.schools.find(s => s.id === targetSchoolId || s.code === targetSchoolId);
+    if (!targetSchool) throw new Error(`Target school '${targetSchoolId}' not found.`);
+
+    const previousSchoolName = sourceSchool?.name || user.schoolName || 'Unknown School';
+    user.schoolId = targetSchool.id;
+    user.schoolName = targetSchool.name;
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: targetSchool.id,
+      title: 'Administrator Transferred',
+      detail: `User '${user.displayName || user.firstName}' transferred from '${previousSchoolName}' to '${targetSchool.name}'. Note: ${auditNote || 'Inter-institutional transfer'}.`,
+      category: 'AUTH'
+    });
+
+    return { success: true, user, message: `Transferred ${user.displayName || user.firstName} to ${targetSchool.name} successfully.` };
+  }
+
+  // Super Admin: Reassign Master Trainer to Another School
+  async reassignTrainer(
+    trainerId: string,
+    sourceSchoolId: string,
+    targetSchoolId: string,
+    auditNote?: string
+  ): Promise<{ success: boolean; trainer: TrainerProfile; message: string }> {
+    const trainer = this.trainers.find(t => t.id === trainerId);
+    if (!trainer) throw new Error(`Trainer with ID '${trainerId}' not found.`);
+
+    const targetSchool = this.schools.find(s => s.id === targetSchoolId);
+    if (!targetSchool) throw new Error(`Target school '${targetSchoolId}' not found.`);
+
+    // Update assigned schools
+    trainer.assignedSchoolIds = (trainer.assignedSchoolIds || []).filter(id => id !== sourceSchoolId);
+    if (!trainer.assignedSchoolIds.includes(targetSchool.id)) {
+      trainer.assignedSchoolIds.push(targetSchool.id);
+    }
+    trainer.assignedSchoolsCount = trainer.assignedSchoolIds.length;
+
+    // Update allocations
+    this.allocations.forEach(a => {
+      if (a.trainerId === trainer.id && a.schoolId === sourceSchoolId) {
+        a.schoolId = targetSchool.id;
+        a.schoolName = targetSchool.name;
+      }
+    });
+
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: targetSchool.id,
+      title: 'Trainer Reassigned',
+      detail: `Master Trainer '${trainer.name}' reassigned to '${targetSchool.name}'. Note: ${auditNote || 'Workload rebalance'}.`,
+      category: 'STEM'
+    });
+
+    return { success: true, trainer, message: `Trainer ${trainer.name} reassigned to ${targetSchool.name} successfully.` };
+  }
+
   async getPricingRules(): Promise<PricingRule[]> {
     return [...this.pricingRules];
   }
@@ -1626,23 +1948,81 @@ class ProductionDatabaseManager {
     const newEnrollments: StudentEnrollment[] = [];
     let alreadyEnrolledCount = 0;
 
+    // Resolve pricing deterministically
+    let unitPrice = assignment.appliedPricePerUnit ?? course?.pricePerStudent ?? 0;
+    let discountPercent = 0;
+    let resolvedRuleId: string | undefined;
+
+    // Check pricing rules if unitPrice is not explicitly locked on assignment
+    if (!assignment.appliedPricePerUnit) {
+      const matchRule = this.pricingRules.find(r => r.courseId === data.courseId && r.isActive);
+      if (matchRule) {
+        unitPrice = matchRule.price;
+        discountPercent = matchRule.discountPercent || 0;
+        resolvedRuleId = matchRule.id;
+      }
+    }
+
+    const isFreeCourse = Boolean(course?.isFreeCourse || (unitPrice === 0 && (course?.pricePerStudent === 0 || assignment.appliedPricePerUnit === 0)));
+    const finalPricePerStudent = isFreeCourse ? 0 : Math.round(unitPrice * (1 - discountPercent / 100));
+
+    const priceSnapshot = {
+      unitPrice,
+      discountPercent,
+      finalPricePerStudent,
+      billingBasis: assignment.billingBasis || 'PER_STUDENT',
+      currency: 'INR' as const,
+      resolvedRuleId,
+      isFreeCourse,
+      snapshotAt: new Date().toISOString()
+    };
+
+    const enrolledStudentsResults: any[] = [];
+
+    let seqCounter = 100 + this.courseEnrollments.length;
     for (const student of candidateStudents) {
       const existing = this.courseEnrollments.find(
         e => e.schoolId === data.schoolId && e.courseId === data.courseId && e.studentId === student.id
       );
       if (existing) {
         alreadyEnrolledCount++;
+        enrolledStudentsResults.push({
+          studentName: `${student.firstName} ${student.lastName}`.trim(),
+          studentId: student.id,
+          admissionNumber: student.admissionNumber || `STU-2026-${String(seqCounter).padStart(5, '0')}`,
+          className: student.gradeName,
+          sectionName: student.sectionName,
+          accountStatus: 'ACTIVE',
+          result: 'FAILED',
+          reason: 'Already enrolled in this course'
+        });
         continue;
       }
+
+      seqCounter++;
+      const admissionNumber = student.admissionNumber || `STU-2026-${String(seqCounter).padStart(5, '0')}`;
+      student.admissionNumber = admissionNumber;
+
+      const cadetLoginId = student.credentials?.loginId || `CADET-${admissionNumber.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const activationToken = `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const activationUrl = `/activate?token=${activationToken}&id=${student.id}`;
+
+      // Update student credentials state
+      student.credentials = {
+        loginId: cadetLoginId,
+        provisionedAt: new Date().toISOString(),
+        status: 'PROVISIONING',
+        credentialsIssued: false
+      };
+      student.provisioningStatus = 'PROVISIONING';
 
       const enrollment: StudentEnrollment = {
         id: `enr-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         studentId: student.id,
-        studentName: `${student.firstName} ${student.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`.trim(),
         studentEmail: student.email,
-        studentLoginId: student.credentials?.loginId || `STU-${student.admissionNumber}`,
-        generatedPassword: student.credentials?.temporaryPassword || 'Cadet@2026',
-        admissionNumber: student.admissionNumber,
+        studentLoginId: cadetLoginId,
+        admissionNumber,
         schoolId: data.schoolId,
         schoolName: school.name,
         courseId: data.courseId,
@@ -1656,17 +2036,33 @@ class ProductionDatabaseManager {
         lastActiveAt: new Date().toISOString(),
         quizScoreAverage: 0,
         status: 'ACTIVE',
-        currentModule: 'Module 1: Introduction'
+        currentModule: 'Module 1: Foundations & Orientation',
+        accountStatus: 'ACTIVE',
+        activationStatus: 'PENDING_ACTIVATION',
+        priceSnapshot
       };
 
       this.courseEnrollments.push(enrollment);
       newEnrollments.push(enrollment);
+
+      enrolledStudentsResults.push({
+        studentName: enrollment.studentName,
+        studentId: student.id,
+        admissionNumber,
+        className: student.gradeName,
+        sectionName: student.sectionName,
+        accountStatus: 'ACTIVATION_PENDING',
+        result: 'SUCCESS',
+        activationToken,
+        activationUrl
+      });
     }
 
     // Update assignment counter
     assignment.enrolledStudentsCount = this.courseEnrollments.filter(e => e.schoolId === data.schoolId && e.courseId === data.courseId).length;
 
-    const pricePerStudent = assignment.appliedPricePerUnit || course?.pricePerStudent || 0;
+    const totalBilling = newEnrollments.length * finalPricePerStudent;
+
     const batch: BulkEnrollmentBatch = {
       id: batchId,
       schoolId: data.schoolId,
@@ -1675,23 +2071,28 @@ class ProductionDatabaseManager {
       courseTitle,
       targetGrade: data.gradeName,
       totalEnrolled: newEnrollments.length,
-      pricePerStudent,
-      totalBilling: newEnrollments.length * pricePerStudent,
+      failedCount: alreadyEnrolledCount,
+      pricePerStudent: finalPricePerStudent,
+      totalBilling,
+      priceSnapshot,
       enrolledAt: new Date().toISOString(),
-      enrolledBy: 'School Admin',
+      enrolledBy: 'School Administrator',
       studentCredentials: newEnrollments.map(e => ({
         studentName: e.studentName,
         admissionNumber: e.admissionNumber,
         loginId: e.studentLoginId,
-        password: e.generatedPassword,
-        gradeName: e.gradeName
-      }))
+        gradeName: e.gradeName,
+        accountStatus: 'ACTIVATION_PENDING'
+      })),
+      enrolledStudentsResults
     };
+
+    this.saveToDisk();
 
     await this.recordAuditEvent({
       schoolId: data.schoolId,
       title: 'Bulk Course Enrollment',
-      detail: `Enrolled ${newEnrollments.length} students into '${courseTitle}' for ${data.gradeName}. (${alreadyEnrolledCount} previously enrolled).`,
+      detail: `Enrolled ${newEnrollments.length} student(s) into '${courseTitle}' for ${data.gradeName} (Total: ₹${totalBilling.toLocaleString('en-IN')}).`,
       category: 'STEM'
     });
 

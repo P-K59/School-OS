@@ -38,7 +38,8 @@ import {
   InstitutionalFeeStructure,
   SchoolModulesConfig,
   TeacherTask,
-  NoticeBroadcast
+  NoticeBroadcast,
+  AuthProviderType
 } from '../types';
 import {
   initialSchools,
@@ -77,15 +78,22 @@ import {
   DataMode,
   getActiveDataMode,
   setActiveDataMode,
+  getActiveAuthProvider,
+  setActiveAuthProvider,
+  getCognitoConfig,
+  shouldLoadDemoFixtures,
   getDataModeConfig,
   resolveStorageKey
 } from '../config/data-mode';
 import { generateUniqueRegistrationId, productionService } from '../supabase/service';
 
 interface AuthContextType {
-  // Central Data Environment (Demo Sandbox vs Live Production Database)
+  // Central Data Environment (Demo Sandbox vs Live Production Database vs AWS Cognito)
   dataMode: DataMode;
   setDataMode: (mode: DataMode) => void;
+  authProvider: AuthProviderType;
+  setAuthProvider: (provider: AuthProviderType) => void;
+  cognitoConfigError: string | null;
   isLoadingData: boolean;
   dataError: string | null;
   clearDataError: () => void;
@@ -128,6 +136,24 @@ interface AuthContextType {
   updateSchoolModules: (schoolId: string, modules: SchoolModulesConfig) => void;
   resetSchoolAdminPassword: (schoolId: string, newPassword?: string) => Promise<{ success: boolean; newPassword: string; error?: string }>;
   resetStaffPassword: (staffId: string, newPassword?: string) => Promise<{ success: boolean; newPassword: string; error?: string }>;
+  
+  // Super Admin -> School Reassignment Workflows (Phase 6)
+  reassignSchoolPrincipal: (
+    schoolId: string,
+    principalData: { firstName: string; lastName: string; email: string; phone?: string; designation?: string; newPassword?: string },
+    auditNote?: string
+  ) => Promise<{ success: boolean; school?: School; error?: string }>;
+  transferAdministrator: (
+    userId: string,
+    targetSchoolId: string,
+    auditNote?: string
+  ) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  reassignTrainer: (
+    trainerId: string,
+    sourceSchoolId: string,
+    targetSchoolId: string,
+    auditNote?: string
+  ) => Promise<{ success: boolean; trainer?: TrainerProfile; error?: string }>;
 
   // Super Admin -> Central Course Pricing Engine
   pricingRules: PricingRule[];
@@ -140,6 +166,8 @@ interface AuthContextType {
     ruleId?: string;
     overrideApplied: boolean;
     reason?: string;
+    discountPercent?: number;
+    isFreeCourse?: boolean;
   };
   savePricingRule: (rule: Omit<PricingRule, 'id' | 'createdAt' | 'updatedAt'>) => PricingRule;
   setSchoolPricingOverride: (override: Omit<SchoolPricingOverride, 'id' | 'updatedAt'>) => SchoolPricingOverride;
@@ -155,6 +183,7 @@ interface AuthContextType {
   };
   updateCourseAssignment: (id: string, updates: Partial<SchoolCourseAssignment>) => void;
   changeAssignmentStatus: (assignmentId: string, status: SchoolCourseAssignment['status']) => void;
+  removeSchoolCourseAssignment: (assignmentId: string) => Promise<{ success: boolean; error?: string }>;
 
   // Super Admin -> InnovatMind Trainer Pool & Allocation
   trainers: TrainerProfile[];
@@ -187,10 +216,14 @@ interface AuthContextType {
   activeStudent: Student | null;
   setActiveStudent: (student: Student | null) => void;
 
-  // Course Management & Dynamic Pricing (Super Admin)
-  addCourse: (course: Omit<Course, 'id'>) => Course;
+  // Course Management & Full Lifecycle Actions (Phases 4 & 9)
+  addCourse: (course: Omit<Course, 'id'>) => Promise<Course>;
   updateCoursePrice: (courseId: string, price: number) => void;
-  updateCourse: (courseId: string, updates: Partial<Course>) => void;
+  updateCourse: (courseId: string, updates: Partial<Course>) => Promise<Course>;
+  deleteCourse: (courseId: string, force?: boolean) => Promise<{ success: boolean; error?: string; affectedAssignments?: number }>;
+  archiveCourse: (courseId: string, isArchived: boolean) => Promise<{ success: boolean; course?: Course; error?: string }>;
+  duplicateCourse: (courseId: string) => Promise<{ success: boolean; course?: Course; error?: string }>;
+  toggleCoursePublish: (courseId: string, isPublished: boolean) => Promise<{ success: boolean; course?: Course; error?: string }>;
 
   // 1-Click Bulk Enrollment, Automated Credentials & Learning Telemetry
   enrollments: StudentEnrollment[];
@@ -324,12 +357,32 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [dataMode, setDataModeState] = useState<DataMode>(() => getActiveDataMode());
+  const [authProvider, setAuthProviderState] = useState<AuthProviderType>(() => getActiveAuthProvider());
+  const [cognitoConfigError, setCognitoConfigError] = useState<string | null>(() => {
+    const provider = getActiveAuthProvider();
+    if (provider === 'COGNITO') {
+      const cfg = getCognitoConfig();
+      return cfg.isConfigured ? null : (cfg.errorMessage || 'AWS Cognito configuration missing');
+    }
+    return null;
+  });
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
   const [dataError, setDataError] = useState<string | null>(null);
 
   const setDataMode = (mode: DataMode) => {
     setDataModeState(mode);
     setActiveDataMode(mode);
+  };
+
+  const setAuthProvider = (provider: AuthProviderType) => {
+    setAuthProviderState(provider);
+    setActiveAuthProvider(provider);
+    if (provider === 'COGNITO') {
+      const cfg = getCognitoConfig();
+      setCognitoConfigError(cfg.isConfigured ? null : (cfg.errorMessage || 'AWS Cognito configuration missing'));
+    } else {
+      setCognitoConfigError(null);
+    }
   };
 
   const clearDataError = () => setDataError(null);
@@ -420,46 +473,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
-  // Core multi-tenant state lists (Clean empty states in PRODUCTION, fixtures only in DEMO)
+  // Core multi-tenant state lists (Clean empty states in PRODUCTION and COGNITO, fixtures only in DEMO)
   const [studentsList, setStudentsList] = useState<Student[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialStudents
+    shouldLoadDemoFixtures() ? initialStudents : []
   );
   const [invoicesList, setInvoicesList] = useState<FeeInvoice[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialInvoices
+    shouldLoadDemoFixtures() ? initialInvoices : []
   );
   const [staffList, setStaffList] = useState<StaffMember[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? initialStaff.filter(s => isRealSchool({ id: s.schoolId })) : initialStaff
+    shouldLoadDemoFixtures() ? initialStaff : initialStaff.filter(s => isRealSchool({ id: s.schoolId }))
   );
   const [payrollList, setPayrollList] = useState<PayrollRecord[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialPayroll
+    shouldLoadDemoFixtures() ? initialPayroll : []
   );
   const [timetableList, setTimetableList] = useState<TimetableSlot[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialTimetable
+    shouldLoadDemoFixtures() ? initialTimetable : []
   );
   const [activitiesList, setActivitiesList] = useState<AuditEvent[]>(initialAuditEvents);
   const [financialsMap, setFinancialsMap] = useState<Record<string, SchoolFinancials>>(initialSchoolFinancials);
   const [coursesList, setCoursesList] = useState<Course[]>(initialCourses);
-  const [enrollmentsList, setEnrollmentsList] = useState<StudentEnrollment[]>(initialEnrollments);
-  const [batchesList, setBatchesList] = useState<BulkEnrollmentBatch[]>(initialBatches);
-  const [examsList, setExamsList] = useState<Exam[]>(initialExams);
-  const [examMarksList, setExamMarksList] = useState<StudentExamMark[]>(initialExamMarks);
+  const [enrollmentsList, setEnrollmentsList] = useState<StudentEnrollment[]>(shouldLoadDemoFixtures() ? initialEnrollments : []);
+  const [batchesList, setBatchesList] = useState<BulkEnrollmentBatch[]>(shouldLoadDemoFixtures() ? initialBatches : []);
+  const [examsList, setExamsList] = useState<Exam[]>(shouldLoadDemoFixtures() ? initialExams : []);
+  const [examMarksList, setExamMarksList] = useState<StudentExamMark[]>(shouldLoadDemoFixtures() ? initialExamMarks : []);
 
   // Super Admin Central Collections
   const [trainersList, setTrainersList] = useState<TrainerProfile[]>(initialTrainers);
   const [pricingRulesList, setPricingRulesList] = useState<PricingRule[]>(initialPricingRules);
   const [schoolPricingOverridesList, setSchoolPricingOverridesList] = useState<SchoolPricingOverride[]>(initialSchoolPricingOverrides);
   const [assignmentsList, setAssignmentsList] = useState<SchoolCourseAssignment[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialSchoolAssignments
+    shouldLoadDemoFixtures() ? initialSchoolAssignments : []
   );
   const [allocationsList, setAllocationsList] = useState<TrainerAllocation[]>(initialTrainerAllocations);
   const [attendanceRecordsList, setAttendanceRecordsList] = useState<AttendanceRecord[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialAttendanceRecords
+    shouldLoadDemoFixtures() ? initialAttendanceRecords : []
   );
   const [paymentReceiptsList, setPaymentReceiptsList] = useState<PaymentReceipt[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [] : initialPaymentReceipts
+    shouldLoadDemoFixtures() ? initialPaymentReceipts : []
   );
   const [feeStructuresList, setFeeStructuresList] = useState<InstitutionalFeeStructure[]>(initialFeeStructures);
-  const [activeStudent, setActiveStudent] = useState<Student | null>(initialStudents[0]);
+  const [activeStudent, setActiveStudent] = useState<Student | null>(null);
   const [noticesList, setNoticesList] = useState<NoticeBroadcast[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -695,6 +748,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Ignore SSR/storage errors
     }
+
+    // 4. Initial server database fetch on mount to sync pending applications and fresh records
+    syncProductionData();
+
+    // 5. Supabase Realtime channel subscription for live school updates
+    const unsubRealtime = productionService.subscribeToSchools({
+      onInsert: (newSchool) => {
+        setSchools(prev => {
+          if (prev.some(s => s.id === newSchool.id || s.code === newSchool.code || s.registrationId === newSchool.registrationId)) {
+            return prev;
+          }
+          const updated = [newSchool, ...prev];
+          persistSchoolsToAllKeys(updated);
+          return updated;
+        });
+      },
+      onUpdate: (updatedSchool) => {
+        setSchools(prev => {
+          const updated = prev.map(s => (s.id === updatedSchool.id || s.code === updatedSchool.code) ? { ...s, ...updatedSchool } : s);
+          persistSchoolsToAllKeys(updated);
+          return updated;
+        });
+      },
+      onDelete: (deletedSchoolId) => {
+        setSchools(prev => {
+          const updated = prev.filter(s => s.id !== deletedSchoolId);
+          persistSchoolsToAllKeys(updated);
+          return updated;
+        });
+      }
+    });
+
+    // 6. Cross-tab immediate synchronization via BroadcastChannel
+    let broadcastChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        broadcastChannel = new BroadcastChannel('school_os_realtime');
+        broadcastChannel.onmessage = (event) => {
+          if (event.data?.type === 'SCHOOL_REGISTERED' || event.data?.type === 'SCHOOL_UPDATED' || event.data?.type === 'SYNC_REQUEST') {
+            syncProductionData();
+          }
+        };
+      }
+    } catch {}
+
+    // 7. Background heartbeat fallback poll (every 10s if window visible)
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        fetch('/api/schools')
+          .then(res => res.json())
+          .then(data => {
+            if (data.schools && Array.isArray(data.schools)) {
+              let deletedSchoolIds = new Set<string>();
+              try {
+                const raw = localStorage.getItem('school_os_deleted_school_ids');
+                if (raw) JSON.parse(raw).forEach((id: string) => deletedSchoolIds.add(id));
+              } catch {}
+              const clean = data.schools.filter((s: School) => s && s.id && !deletedSchoolIds.has(s.id));
+              setSchools(clean);
+              persistSchoolsToAllKeys(clean);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 10000);
+
+    return () => {
+      unsubRealtime();
+      if (broadcastChannel) broadcastChannel.close();
+      clearInterval(pollInterval);
+    };
   }, []);
 
   // Real Production Database Synchronization
@@ -1010,6 +1134,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setDataModeState('PRODUCTION');
     try {
       localStorage.setItem('school_os_data_mode', 'PRODUCTION');
+    } catch {}
+
+    // Broadcast registration to any other open browser windows (e.g. Super Admin dashboard)
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('school_os_realtime');
+        bc.postMessage({ type: 'SCHOOL_REGISTERED', school: persistedSchool });
+        setTimeout(() => bc.close(), 100);
+      }
     } catch {}
 
     return { success: true, school: persistedSchool, user: newPrincipal };
@@ -1397,6 +1530,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         effectiveId
       );
 
+      // Broadcast update to all connected tabs/dashboards
+      try {
+        if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+          const bc = new BroadcastChannel('school_os_realtime');
+          bc.postMessage({ type: 'SCHOOL_UPDATED', schoolId: effectiveId });
+          setTimeout(() => bc.close(), 100);
+        }
+      } catch {}
+
       return { success: true, school: updatedSchool || targetSchool };
     } catch (err: any) {
       return { success: false, error: err.message || 'Error occurred while approving school' };
@@ -1474,6 +1616,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'AUTH',
         effectiveId
       );
+
+      // Broadcast update to all connected tabs/dashboards
+      try {
+        if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+          const bc = new BroadcastChannel('school_os_realtime');
+          bc.postMessage({ type: 'SCHOOL_UPDATED', schoolId: effectiveId });
+          setTimeout(() => bc.close(), 100);
+        }
+      } catch {}
 
       return { success: true, school: updatedSchool || targetSchool };
     } catch (err: any) {
@@ -1735,7 +1886,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const resolveCoursePrice = (courseId: string, schoolId?: string, academicSession = '2026-2027', gradeName?: string) => {
     const targetSchool = schools.find(s => s.id === schoolId) || activeSchool;
     const course = coursesList.find(c => c.id === courseId);
-    const basePrice = course?.pricePerStudent || 999;
+    const isFreeCourse = Boolean(course?.isFreeCourse || course?.pricePerStudent === 0);
+    const basePrice = isFreeCourse ? 0 : (course?.pricePerStudent ?? 999);
 
     // 1. School-Specific Override (Highest Precedence)
     const schoolOverride = schoolPricingOverridesList.find(
@@ -1749,7 +1901,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         source: `School Override (${targetSchool.name})`,
         ruleId: schoolOverride.id,
         overrideApplied: true,
-        reason: schoolOverride.reason
+        reason: schoolOverride.reason,
+        discountPercent: 0,
+        isFreeCourse: schoolOverride.customPrice === 0
       };
     }
 
@@ -1765,7 +1919,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           billingBasis: gradeRule.billingBasis,
           source: `Grade Tier (${gradeName})`,
           ruleId: gradeRule.id,
-          overrideApplied: false
+          overrideApplied: false,
+          discountPercent: gradeRule.discountPercent || 0,
+          isFreeCourse: gradeRule.price === 0
         };
       }
     }
@@ -1782,7 +1938,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           billingBasis: typeRule.billingBasis,
           source: `School Type Tier (${targetSchool.schoolType})`,
           ruleId: typeRule.id,
-          overrideApplied: false
+          overrideApplied: false,
+          discountPercent: typeRule.discountPercent || 0,
+          isFreeCourse: typeRule.price === 0
         };
       }
     }
@@ -1799,7 +1957,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           billingBasis: cityRule.billingBasis,
           source: `City Tier (${targetSchool.city})`,
           ruleId: cityRule.id,
-          overrideApplied: false
+          overrideApplied: false,
+          discountPercent: cityRule.discountPercent || 0,
+          isFreeCourse: cityRule.price === 0
         };
       }
     }
@@ -1816,7 +1976,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           billingBasis: stateRule.billingBasis,
           source: `State Tier (${targetSchool.state})`,
           ruleId: stateRule.id,
-          overrideApplied: false
+          overrideApplied: false,
+          discountPercent: stateRule.discountPercent || 0,
+          isFreeCourse: stateRule.price === 0
         };
       }
     }
@@ -1833,7 +1995,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           billingBasis: regionRule.billingBasis,
           source: `Regional Tier (${targetSchool.region})`,
           ruleId: regionRule.id,
-          overrideApplied: false
+          overrideApplied: false,
+          discountPercent: regionRule.discountPercent || 0,
+          isFreeCourse: regionRule.price === 0
         };
       }
     }
@@ -1849,7 +2013,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         billingBasis: globalRule.billingBasis,
         source: 'Global Central Default',
         ruleId: globalRule.id,
-        overrideApplied: false
+        overrideApplied: false,
+        discountPercent: globalRule.discountPercent || 0,
+        isFreeCourse: globalRule.price === 0
       };
     }
 
@@ -1859,7 +2025,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       currency: 'INR' as const,
       billingBasis: 'PER_STUDENT' as const,
       source: 'Course Catalog Price',
-      overrideApplied: false
+      overrideApplied: false,
+      discountPercent: 0,
+      isFreeCourse
     };
   };
 
@@ -3018,20 +3186,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })()
         : examMarksList.filter(m => m.schoolId === activeSchool.id));
 
-  // Super Admin Course Mutators & Dynamic Pricing
-  const addCourse = (newCourseData: Omit<Course, 'id'>): Course => {
-    const course: Course = {
+  // Super Admin Course Mutators & Lifecycle Management (Phases 4 & 9)
+  const addCourse = async (newCourseData: Omit<Course, 'id'>): Promise<Course> => {
+    let persistedCourse: Course | null = null;
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'SUPER_ADMIN',
+          'x-user-id': currentUser?.id || 'usr-super'
+        },
+        body: JSON.stringify(newCourseData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        persistedCourse = data.course;
+      }
+    } catch {}
+
+    const course: Course = persistedCourse || {
       ...newCourseData,
-      id: `course-${Date.now()}`,
+      id: `crs-${Date.now().toString().slice(-6)}`,
+      status: newCourseData.status || 'PUBLISHED',
+      isPublished: newCourseData.isPublished !== false,
+      isArchived: false,
       createdAt: new Date().toISOString()
     };
-    const updated = [course, ...coursesList];
-    setCoursesList(updated);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('school_os_courses', JSON.stringify(updated));
-      } catch {}
-    }
+
+    setCoursesList(prev => {
+      const updated = [course, ...prev.filter(c => c.id !== course.id)];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+
+    recordAuditEvent(
+      'Course Added to Catalog',
+      `Curriculum '${course.title}' created with base price ₹${course.pricePerStudent}.`,
+      'STEM',
+      'platform'
+    );
+
     return course;
   };
 
@@ -3039,27 +3236,312 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCoursesList(prev => {
       const updated = prev.map(c => c.id === courseId ? { ...c, pricePerStudent: price } : c);
       if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('school_os_courses', JSON.stringify(updated));
-        } catch {}
+        try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
       }
       return updated;
     });
+
+    // Also persist to server database
+    fetch('/api/courses', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+      body: JSON.stringify({ courseId, pricePerStudent: price })
+    }).catch(() => {});
   };
 
-  const updateCourse = (courseId: string, updates: Partial<Course>) => {
+  const updateCourse = async (courseId: string, updates: Partial<Course>): Promise<Course> => {
+    let persistedCourse: Course | null = null;
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'SUPER_ADMIN',
+          'x-user-id': currentUser?.id || 'usr-super'
+        },
+        body: JSON.stringify({ courseId, ...updates })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        persistedCourse = data.course;
+      }
+    } catch {}
+
+    let resultCourse: Course = {} as Course;
     setCoursesList(prev => {
-      const updated = prev.map(c => c.id === courseId ? { ...c, ...updates } : c);
+      const updated = prev.map(c => {
+        if (c.id === courseId) {
+          resultCourse = persistedCourse || { ...c, ...updates, updatedAt: new Date().toISOString() };
+          return resultCourse;
+        }
+        return c;
+      });
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+
+    return resultCourse;
+  };
+
+  const deleteCourse = async (courseId: string, force = false): Promise<{ success: boolean; error?: string; affectedAssignments?: number }> => {
+    try {
+      const res = await fetch(`/api/courses?courseId=${courseId}&force=${force}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': 'SUPER_ADMIN',
+          'x-user-id': currentUser?.id || 'usr-super'
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to delete course' };
+      }
+
+      setCoursesList(prev => {
+        const updated = prev.filter(c => c.id !== courseId);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+
+      if (force) {
+        setAssignmentsList(prev => {
+          const updated = prev.filter(a => a.courseId !== courseId);
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem('school_os_assignments', JSON.stringify(updated)); } catch {}
+          }
+          return updated;
+        });
+      }
+
+      recordAuditEvent(
+        'Course Catalog Deletion',
+        `Course '${data.deletedCourse?.title || courseId}' permanently deleted by Super Admin.`,
+        'STEM',
+        'platform'
+      );
+
+      return { success: true, affectedAssignments: data.affectedAssignments };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error deleting course' };
+    }
+  };
+
+  const archiveCourse = async (courseId: string, isArchived: boolean): Promise<{ success: boolean; course?: Course; error?: string }> => {
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+        body: JSON.stringify({ courseId, action: isArchived ? 'archive' : 'unarchive' })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || 'Failed to toggle archive' };
+
+      setCoursesList(prev => {
+        const updated = prev.map(c => c.id === courseId ? {
+          ...c,
+          isArchived,
+          status: (isArchived ? 'ARCHIVED' : (c.isPublished ? 'PUBLISHED' : 'DRAFT')) as ('ARCHIVED' | 'PUBLISHED' | 'DRAFT')
+        } : c);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+
+      return { success: true, course: data.course };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const duplicateCourse = async (courseId: string): Promise<{ success: boolean; course?: Course; error?: string }> => {
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+        body: JSON.stringify({ action: 'duplicate', courseId })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || 'Failed to duplicate course' };
+
+      setCoursesList(prev => {
+        const updated = [data.course, ...prev];
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+
+      return { success: true, course: data.course };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const toggleCoursePublish = async (courseId: string, isPublished: boolean): Promise<{ success: boolean; course?: Course; error?: string }> => {
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+        body: JSON.stringify({ courseId, action: isPublished ? 'publish' : 'unpublish' })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || 'Failed to change publish status' };
+
+      setCoursesList(prev => {
+        const updated = prev.map(c => c.id === courseId ? {
+          ...c,
+          isPublished,
+          status: (isPublished ? 'PUBLISHED' : 'DRAFT') as ('ARCHIVED' | 'PUBLISHED' | 'DRAFT')
+        } : c);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('school_os_courses', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+
+      return { success: true, course: data.course };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const removeSchoolCourseAssignment = async (assignmentId: string): Promise<{ success: boolean; error?: string }> => {
+    setAssignmentsList(prev => {
+      const updated = prev.filter(a => a.id !== assignmentId);
       if (typeof window !== 'undefined') {
         try {
-          localStorage.setItem('school_os_courses', JSON.stringify(updated));
+          localStorage.setItem('school_os_assignments', JSON.stringify(updated));
+          localStorage.setItem('school_os_prod_assignments', JSON.stringify(updated));
         } catch {}
       }
       return updated;
     });
+    return { success: true };
   };
 
-  // 1-Click Bulk Enrollment & Automated Credentials Generator
+  // Super Admin: School Reassignment Workflows (Phase 6)
+  const reassignSchoolPrincipal = async (
+    schoolId: string,
+    principalData: { firstName: string; lastName: string; email: string; phone?: string; designation?: string; newPassword?: string },
+    auditNote?: string
+  ): Promise<{ success: boolean; school?: School; error?: string }> => {
+    try {
+      const res = await fetch('/api/schools', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'SUPER_ADMIN',
+          'x-user-id': currentUser?.id || 'usr-super'
+        },
+        body: JSON.stringify({
+          schoolId,
+          action: 'reassign_principal',
+          principalData,
+          auditNote
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || 'Failed to reassign principal' };
+
+      const newFullName = `${principalData.firstName} ${principalData.lastName}`.trim();
+      setSchools(prev => {
+        const updated = prev.map(s => s.id === schoolId ? {
+          ...s,
+          principalName: newFullName,
+          email: principalData.email || s.email
+        } : s);
+        persistSchoolsToAllKeys(updated);
+        return updated;
+      });
+
+      recordAuditEvent(
+        'School Leadership Reassigned',
+        `Principal of '${data.school?.name || schoolId}' reassigned to '${newFullName}' (${principalData.email}).`,
+        'AUTH',
+        schoolId
+      );
+
+      return { success: true, school: data.school };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const transferAdministrator = async (
+    userId: string,
+    targetSchoolId: string,
+    auditNote?: string
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    try {
+      const res = await fetch('/api/schools', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'SUPER_ADMIN',
+          'x-user-id': currentUser?.id || 'usr-super'
+        },
+        body: JSON.stringify({
+          schoolId: targetSchoolId,
+          action: 'transfer_admin',
+          userId,
+          targetSchoolId,
+          auditNote
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || 'Failed to transfer administrator' };
+      return { success: true, user: data.user };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const reassignTrainer = async (
+    trainerId: string,
+    sourceSchoolId: string,
+    targetSchoolId: string,
+    auditNote?: string
+  ): Promise<{ success: boolean; trainer?: TrainerProfile; error?: string }> => {
+    try {
+      const res = await fetch('/api/schools', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'SUPER_ADMIN',
+          'x-user-id': currentUser?.id || 'usr-super'
+        },
+        body: JSON.stringify({
+          schoolId: sourceSchoolId,
+          action: 'reassign_trainer',
+          trainerId,
+          targetSchoolId,
+          auditNote
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || 'Failed to reassign trainer' };
+
+      setTrainersList(prev => prev.map(t => {
+        if (t.id === trainerId) {
+          const assigned = (t.assignedSchoolIds || []).filter(id => id !== sourceSchoolId);
+          if (!assigned.includes(targetSchoolId)) assigned.push(targetSchoolId);
+          return { ...t, assignedSchoolIds: assigned, assignedSchoolsCount: assigned.length };
+        }
+        return t;
+      }));
+
+      return { success: true, trainer: data.trainer };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  // 1-Click Bulk Enrollment, Pricing Resolution, Unique Student IDs & Credentials (Phases 5 & 8)
   const bulkEnrollStudents = (courseId: string, gradeName: string, selectedStudentIds?: string[]) => {
     const targetCourse = coursesList.find(c => c.id === courseId);
     if (!targetCourse) throw new Error('Course not found');
@@ -3071,32 +3553,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       eligibleStudents = scopedStudents.filter(s => s.gradeName === gradeName || s.gradeName.includes(gradeName));
     }
 
+    // Resolve course pricing through central pricing rules engine
+    const pricingResolution = resolveCoursePrice(courseId, activeSchool.id, activeSchool.academicSession, gradeName);
+    const unitPrice = pricingResolution.price;
+    const discountPercent = pricingResolution.discountPercent || 0;
+    const isFreeCourse = Boolean(targetCourse.isFreeCourse || unitPrice === 0);
+    const finalPricePerStudent = isFreeCourse ? 0 : Math.round(unitPrice * (1 - discountPercent / 100));
+
+    const priceSnapshot = {
+      unitPrice,
+      discountPercent,
+      finalPricePerStudent,
+      billingBasis: pricingResolution.billingBasis || 'PER_STUDENT',
+      currency: pricingResolution.currency || 'INR',
+      resolvedRuleId: pricingResolution.ruleId,
+      isFreeCourse,
+      snapshotAt: new Date().toISOString()
+    };
+
     const newEnrollments: StudentEnrollment[] = [];
     const credentialsList: Array<{
       studentName: string;
       admissionNumber: string;
       loginId: string;
-      password: string;
+      password?: string;
       gradeName: string;
+      accountStatus?: string;
     }> = [];
+    const enrolledStudentsResults: any[] = [];
+
+    let seqCounter = 100 + enrollmentsList.length;
+    let alreadyEnrolledCount = 0;
 
     eligibleStudents.forEach(student => {
       const already = enrollmentsList.find(e => e.studentId === student.id && e.courseId === courseId);
-      if (already) return;
+      if (already) {
+        alreadyEnrolledCount++;
+        enrolledStudentsResults.push({
+          studentName: `${student.firstName} ${student.lastName}`.trim(),
+          studentId: student.id,
+          admissionNumber: student.admissionNumber || `STU-2026-${String(seqCounter).padStart(5, '0')}`,
+          className: student.gradeName,
+          sectionName: student.sectionName,
+          accountStatus: 'ACTIVE',
+          result: 'FAILED',
+          reason: 'Already enrolled in this course'
+        });
+        return;
+      }
 
-      const randomPin = Math.floor(1000 + Math.random() * 9000);
-      const cleanFirstName = student.firstName.replace(/[^a-zA-Z]/g, '') || 'Cadet';
-      const studentLoginId = `STU-${student.admissionNumber || student.rollNumber || student.id.slice(-4).toUpperCase()}`;
-      const generatedPassword = `Learn#${randomPin}@${cleanFirstName}`;
+      seqCounter++;
+      const admissionNumber = student.admissionNumber || `STU-2026-${String(seqCounter).padStart(5, '0')}`;
+      student.admissionNumber = admissionNumber;
+
+      const cadetLoginId = student.credentials?.loginId || `CADET-${admissionNumber.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const activationToken = `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const activationUrl = `/activate?token=${activationToken}&id=${student.id}`;
 
       const enrollment: StudentEnrollment = {
         id: `enr-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         studentId: student.id,
         studentName: `${student.firstName} ${student.lastName}`.trim(),
-        studentEmail: student.email || `${studentLoginId.toLowerCase()}@${activeSchool.code.toLowerCase()}.edu.in`,
-        studentLoginId,
-        generatedPassword,
-        admissionNumber: student.admissionNumber || student.rollNumber || 'STU-001',
+        studentEmail: student.email || `${cadetLoginId.toLowerCase()}@${activeSchool.code.toLowerCase()}.edu.in`,
+        studentLoginId: cadetLoginId,
+        admissionNumber,
         schoolId: activeSchool.id,
         schoolName: activeSchool.name,
         courseId: targetCourse.id,
@@ -3110,21 +3630,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastActiveAt: 'Just Enrolled',
         quizScoreAverage: 0,
         status: 'ACTIVE',
-        currentModule: 'Module 1: Orientation & Setup'
+        currentModule: 'Module 1: Orientation & Setup',
+        accountStatus: 'ACTIVE',
+        activationStatus: 'PENDING_ACTIVATION',
+        priceSnapshot
       };
 
       newEnrollments.push(enrollment);
       credentialsList.push({
         studentName: `${student.firstName} ${student.lastName}`.trim(),
-        admissionNumber: student.admissionNumber || student.rollNumber || 'STU-001',
-        loginId: studentLoginId,
-        password: generatedPassword,
-        gradeName: student.gradeName
+        admissionNumber,
+        loginId: cadetLoginId,
+        gradeName: student.gradeName,
+        accountStatus: 'ACTIVATION_PENDING'
+      });
+
+      enrolledStudentsResults.push({
+        studentName: enrollment.studentName,
+        studentId: student.id,
+        admissionNumber,
+        className: student.gradeName,
+        sectionName: student.sectionName,
+        accountStatus: 'ACTIVATION_PENDING',
+        result: 'SUCCESS',
+        activationToken,
+        activationUrl
       });
     });
 
     const enrolledCount = newEnrollments.length;
-    const totalBilling = enrolledCount * (targetCourse.pricePerStudent || 999);
+    const totalBilling = enrolledCount * finalPricePerStudent;
 
     const batch: BulkEnrollmentBatch = {
       id: `batch-${Date.now()}`,
@@ -3134,11 +3669,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       courseTitle: targetCourse.title,
       targetGrade: gradeName,
       totalEnrolled: enrolledCount,
-      pricePerStudent: targetCourse.pricePerStudent || 999,
+      failedCount: alreadyEnrolledCount,
+      pricePerStudent: finalPricePerStudent,
       totalBilling,
+      priceSnapshot,
       enrolledAt: new Date().toISOString(),
       enrolledBy: `${currentUser?.firstName || 'Principal'} ${currentUser?.lastName || ''}`.trim(),
-      studentCredentials: credentialsList
+      studentCredentials: credentialsList,
+      enrolledStudentsResults
     };
 
     const updatedEnrollments = [...enrollmentsList, ...newEnrollments];
@@ -3156,6 +3694,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('school_os_batches', JSON.stringify(updatedBatches));
       } catch {}
     }
+
+    // Persist to backend database asynchronously
+    fetch('/api/courses/assign-class', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': role,
+        'x-school-id': activeSchool.id
+      },
+      body: JSON.stringify({
+        schoolId: activeSchool.id,
+        courseId,
+        gradeName,
+        selectedStudentIds
+      })
+    }).catch(() => {});
 
     // Add Audit Event
     const audit: AuditEvent = {
@@ -4691,6 +5245,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         addCourse,
         updateCoursePrice,
         updateCourse,
+        deleteCourse,
+        archiveCourse,
+        duplicateCourse,
+        toggleCoursePublish,
+        removeSchoolCourseAssignment,
+        reassignSchoolPrincipal,
+        transferAdministrator,
+        reassignTrainer,
         enrollments: scopedEnrollments,
         allEnrollments: enrollmentsList,
         batches: scopedBatches,
@@ -4773,6 +5335,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         dismissNotice,
         dataMode,
         setDataMode,
+        authProvider,
+        setAuthProvider,
+        cognitoConfigError,
         isLoadingData,
         dataError,
         clearDataError,

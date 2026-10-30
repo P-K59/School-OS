@@ -19,7 +19,10 @@ import {
   Search,
   Check,
   X,
-  GraduationCap
+  GraduationCap,
+  AlertCircle,
+  RotateCw,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function SchoolCoursesEnrollmentPage() {
@@ -30,7 +33,8 @@ export default function SchoolCoursesEnrollmentPage() {
     enrollments, 
     batches, 
     bulkEnrollStudents, 
-    updateStudentLearningProgress 
+    updateStudentLearningProgress,
+    resolveCoursePrice
   } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'catalog' | 'monitor' | 'batches'>('catalog');
@@ -59,9 +63,15 @@ export default function SchoolCoursesEnrollmentPage() {
     ? eligibleStudents.filter(s => !enrollments.some(e => e.studentId === s.id && e.courseId === selectedCourseForEnroll.id))
     : [];
 
-  const calculatedBilling = selectedCourseForEnroll
-    ? unenrolledEligibleStudents.length * (selectedCourseForEnroll.pricePerStudent || 999)
-    : 0;
+  // Deterministic pricing resolution through central rules engine
+  const pricingResolution = selectedCourseForEnroll
+    ? resolveCoursePrice(selectedCourseForEnroll.id, activeSchool.id, activeSchool.academicSession, targetGrade)
+    : null;
+  const unitPrice = pricingResolution ? pricingResolution.price : (selectedCourseForEnroll?.pricePerStudent ?? 0);
+  const discountPercent = pricingResolution?.discountPercent || 0;
+  const isFreeCourse = Boolean(selectedCourseForEnroll?.isFreeCourse || unitPrice === 0);
+  const finalUnitPrice = isFreeCourse ? 0 : Math.round(unitPrice * (1 - discountPercent / 100));
+  const calculatedBilling = unenrolledEligibleStudents.length * finalUnitPrice;
 
   // Handle 1-Click Bulk Enrollment
   const handleConfirmEnrollment = () => {
@@ -70,22 +80,31 @@ export default function SchoolCoursesEnrollmentPage() {
       const result = bulkEnrollStudents(selectedCourseForEnroll.id, targetGrade);
       setIsEnrollModalOpen(false);
       setEnrollSuccessBatch(result.batch);
-      setNoticeMessage(`Enrolled ${result.enrolledCount} students in "${selectedCourseForEnroll.title}". Credentials generated.`);
+      setNoticeMessage(`Enrolled ${result.enrolledCount} students in "${selectedCourseForEnroll.title}". Credentials and activation tokens generated.`);
       setTimeout(() => setNoticeMessage(null), 5000);
     } catch (err: any) {
       alert(err.message || 'Enrollment failed');
     }
   };
 
-  // Download Credentials as CSV
+  // Download Activation Roster as CSV (Never plaintext passwords)
   const handleDownloadCSV = (batch: BulkEnrollmentBatch) => {
-    const headers = ['Student Name', 'Admission No', 'Class', 'Login ID', 'Password', 'Course', 'School'];
-    const rows = batch.studentCredentials.map(c => [
-      `"${c.studentName}"`,
-      `"${c.admissionNumber}"`,
-      `"${c.gradeName}"`,
-      `"${c.loginId}"`,
-      `"${c.password}"`,
+    const headers = ['Student Name', 'Student ID', 'Class', 'Account Status', 'Enrollment Result', 'Course', 'School'];
+    const records = batch.enrolledStudentsResults || batch.studentCredentials.map(c => ({
+      studentName: c.studentName,
+      studentId: c.admissionNumber,
+      className: c.gradeName,
+      accountStatus: c.accountStatus || 'ACTIVATION_PENDING',
+      result: 'SUCCESS' as const,
+      reason: ''
+    }));
+
+    const rows = records.map(r => [
+      `"${r.studentName}"`,
+      `"${r.studentId}"`,
+      `"${r.className}"`,
+      `"${r.accountStatus}"`,
+      `"${r.result}"`,
       `"${batch.courseTitle}"`,
       `"${batch.schoolName}"`
     ]);
@@ -94,20 +113,40 @@ export default function SchoolCoursesEnrollmentPage() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Student_Credentials_${batch.courseTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${batch.targetGrade}.csv`);
+    link.setAttribute('download', `Enrollment_Roster_${batch.courseTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${batch.targetGrade}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Copy all credentials to clipboard
+  // Copy Activation Summary to clipboard
   const handleCopyAll = (batch: BulkEnrollmentBatch) => {
-    const text = batch.studentCredentials
-      .map((c, i) => `${i + 1}. ${c.studentName} (${c.gradeName}) | ID: ${c.loginId} | Password: ${c.password}`)
+    const records = batch.enrolledStudentsResults || [];
+    const text = records
+      .map((r, i) => `${i + 1}. ${r.studentName} (${r.className}) | Student ID: ${r.studentId} | Status: ${r.accountStatus}`)
       .join('\n');
     navigator.clipboard.writeText(text);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2500);
+  };
+
+  // Retry enrollment for failed records
+  const handleRetryStudent = (record: any) => {
+    if (!enrollSuccessBatch) return;
+    try {
+      const res = bulkEnrollStudents(enrollSuccessBatch.courseId, 'ALL', [record.studentId]);
+      if (res.batch?.enrolledStudentsResults) {
+        setEnrollSuccessBatch(prev => {
+          if (!prev) return null;
+          const updated = (prev.enrolledStudentsResults || []).map(r => 
+            r.studentId === record.studentId ? (res.batch.enrolledStudentsResults?.[0] || r) : r
+          );
+          return { ...prev, enrolledStudentsResults: updated, totalEnrolled: prev.totalEnrolled + 1 };
+        });
+      }
+    } catch (err: any) {
+      alert(err.message || 'Retry failed');
+    }
   };
 
   // Filtered enrollments for monitor
@@ -674,20 +713,20 @@ export default function SchoolCoursesEnrollmentPage() {
           </div>
         )}
 
-        {/* Modal: Generated Credentials */}
+        {/* Modal: Bulk Enrollment Activation & Provisioning Results Table */}
         {enrollSuccessBatch && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col justify-between">
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     <div>
                       <h3 className="text-base font-bold text-slate-900">
-                        {enrollSuccessBatch.totalEnrolled} Students Enrolled!
+                        Bulk Enrollment Completed: {enrollSuccessBatch.totalEnrolled} Students Enrolled
                       </h3>
                       <p className="text-xs text-slate-500">
-                        {enrollSuccessBatch.courseTitle} • {enrollSuccessBatch.targetGrade}
+                        {enrollSuccessBatch.courseTitle} • {enrollSuccessBatch.targetGrade} • School: {enrollSuccessBatch.schoolName}
                       </p>
                     </div>
                   </div>
@@ -699,49 +738,135 @@ export default function SchoolCoursesEnrollmentPage() {
                   </button>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <span className="text-xs text-slate-500">
-                    Generated student login IDs and passwords:
-                  </span>
+                <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Enrolled: {enrollSuccessBatch.totalEnrolled}
+                    </span>
+                    {enrollSuccessBatch.failedCount ? (
+                      <span className="px-2.5 py-1 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        Failed: {enrollSuccessBatch.failedCount}
+                      </span>
+                    ) : null}
+                    <span className="text-slate-500">
+                      Total Billed: <strong className="text-slate-800">₹{enrollSuccessBatch.totalBilling.toLocaleString('en-IN')}</strong>
+                    </span>
+                  </div>
+
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleCopyAll(enrollSuccessBatch)}
                       className="btn-3d-secondary px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1"
                     >
                       <Copy className="w-3.5 h-3.5" />
-                      <span>{copiedAll ? 'Copied ✓' : 'Copy All'}</span>
+                      <span>{copiedAll ? 'Copied ✓' : 'Copy Summary'}</span>
                     </button>
                     <button
                       onClick={() => handleDownloadCSV(enrollSuccessBatch)}
                       className="btn-3d-primary px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Download CSV</span>
+                      <span>Download Roster CSV</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Student Credentials List */}
-                <div className="mt-3 overflow-y-auto max-h-[42vh] pr-1 space-y-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {enrollSuccessBatch.studentCredentials.map((cred, idx) => (
-                      <div key={idx} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs">
-                        <div className="flex items-center justify-between font-bold text-slate-900">
-                          <span className="truncate">{cred.studentName}</span>
-                          <span className="text-[10px] text-slate-500 font-normal">{cred.gradeName}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] pt-1 mt-1 border-t border-slate-200/60 font-mono">
-                          <span className="text-indigo-700 font-semibold">{cred.loginId}</span>
-                          <span className="text-slate-700">{cred.password}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                {/* Table: | Student Name | Student ID | Class | Account Status | Result | */}
+                <div className="mt-3 overflow-y-auto max-h-[46vh] border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
+                      <tr>
+                        <th className="py-2.5 px-3">Student Name</th>
+                        <th className="py-2.5 px-3">Student ID</th>
+                        <th className="py-2.5 px-3">Class</th>
+                        <th className="py-2.5 px-3">Account Status</th>
+                        <th className="py-2.5 px-3 text-right">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(enrollSuccessBatch.enrolledStudentsResults || enrollSuccessBatch.studentCredentials.map(c => ({
+                        studentName: c.studentName,
+                        studentId: c.admissionNumber,
+                        admissionNumber: c.admissionNumber,
+                        className: c.gradeName,
+                        accountStatus: c.accountStatus || 'ACTIVATION_PENDING',
+                        result: 'SUCCESS' as const,
+                        reason: undefined
+                      }))).map((record: any, idx: number) => {
+                        const isSuccess = record.result === 'SUCCESS';
+                        const isActivationPending = record.accountStatus === 'ACTIVATION_PENDING';
+                        
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-2 px-3 font-semibold text-slate-900">
+                              {record.studentName}
+                            </td>
+                            <td className="py-2 px-3 font-mono text-slate-700">
+                              {record.admissionNumber || record.studentId}
+                            </td>
+                            <td className="py-2 px-3 text-slate-600">
+                              {record.className}
+                            </td>
+                            <td className="py-2 px-3">
+                              {isActivationPending ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  <Clock className="w-3 h-3" />
+                                  <span>ACTIVATION_PENDING</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <ShieldCheck className="w-3 h-3" />
+                                  <span>{record.accountStatus || 'ACTIVE'}</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              {isSuccess ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                  <Check className="w-3 h-3" />
+                                  <span>SUCCESS</span>
+                                </span>
+                              ) : (
+                                <div className="inline-flex items-center justify-end gap-2">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800" title={record.reason}>
+                                    <AlertCircle className="w-3 h-3" />
+                                    <span>FAILED</span>
+                                  </span>
+                                  {record.reason && (
+                                    <span className="text-[10px] text-slate-400 max-w-[120px] truncate" title={record.reason}>
+                                      {record.reason}
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => handleRetryStudent(record)}
+                                    className="p-1 text-slate-500 hover:text-indigo-600 rounded-md hover:bg-slate-100"
+                                    title="Retry Enrollment"
+                                  >
+                                    <RotateCw className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>
+                    Passwords are cryptographically secured and sent via encrypted activation links. Plaintext credentials are never displayed in public logs.
+                  </span>
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  Batch Reference: {enrollSuccessBatch.id}
+                </span>
                 <button
                   onClick={() => {
                     setEnrollSuccessBatch(null);

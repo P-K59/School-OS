@@ -37,7 +37,10 @@ import {
   BarChart3,
   Layers,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  UserCheck,
+  RefreshCw,
+  ArrowRightLeft
 } from 'lucide-react';
 import { WelcomeKitModal } from '@/components/admin/welcome-kit-modal';
 
@@ -73,7 +76,10 @@ export default function SchoolDetailsPage() {
     updateSchool,
     recordAuditEvent,
     deleteSchool,
-    toggleSchoolSuspension
+    toggleSchoolSuspension,
+    reassignSchoolPrincipal,
+    transferAdministrator,
+    reassignTrainer
   } = useAuth();
 
   // Active tab state
@@ -120,6 +126,84 @@ export default function SchoolDetailsPage() {
   const [isSuspensionModalOpen, setIsSuspensionModalOpen] = useState(false);
   const [suspensionReasonInput, setSuspensionReasonInput] = useState('');
   const [isProcessingSuspension, setIsProcessingSuspension] = useState(false);
+
+  // Reassignment Modal States (Phase 6)
+  const [isReassignPrincipalOpen, setIsReassignPrincipalOpen] = useState(false);
+  const [reassignPrincipalForm, setReassignPrincipalForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    designation: 'Principal & Institutional Head',
+    newPassword: '',
+    auditNote: 'Administrative leadership reassignment'
+  });
+
+  const [isTransferAdminOpen, setIsTransferAdminOpen] = useState(false);
+  const [transferTargetSchoolId, setTransferTargetSchoolId] = useState('');
+  const [transferAuditNote, setTransferAuditNote] = useState('Administrative transfer between partner schools');
+
+  const [isReassignTrainerOpen, setIsReassignTrainerOpen] = useState(false);
+  const [selectedTrainerForReassign, setSelectedTrainerForReassign] = useState('');
+  const [trainerTargetSchoolId, setTrainerTargetSchoolId] = useState('');
+  const [trainerAuditNote, setTrainerAuditNote] = useState('STEM master trainer workload rebalancing');
+
+  const [reassignmentNotice, setReassignmentNotice] = useState<string | null>(null);
+
+  const otherRealSchools = useMemo(() => {
+    return schools.filter(s => s.id !== school?.id && s.isActive);
+  }, [schools, school?.id]);
+
+  const handleReassignPrincipalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school) return;
+    const res = await reassignSchoolPrincipal(
+      school.id,
+      {
+        firstName: reassignPrincipalForm.firstName.trim(),
+        lastName: reassignPrincipalForm.lastName.trim(),
+        email: reassignPrincipalForm.email.trim(),
+        phone: reassignPrincipalForm.phone.trim(),
+        designation: reassignPrincipalForm.designation.trim(),
+        newPassword: reassignPrincipalForm.newPassword.trim() || undefined
+      },
+      reassignPrincipalForm.auditNote
+    );
+    if (res.success) {
+      setReassignmentNotice(`School principal successfully reassigned to ${reassignPrincipalForm.firstName} ${reassignPrincipalForm.lastName}.`);
+      setIsReassignPrincipalOpen(false);
+      setTimeout(() => setReassignmentNotice(null), 5000);
+    } else {
+      alert(res.error || 'Failed to reassign principal');
+    }
+  };
+
+  const handleTransferAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school || !transferTargetSchoolId) return;
+    const adminUserId = `usr-admin-${school.id}`;
+    const res = await transferAdministrator(adminUserId, transferTargetSchoolId, transferAuditNote);
+    if (res.success) {
+      setReassignmentNotice(`Administrator transferred to target school successfully.`);
+      setIsTransferAdminOpen(false);
+      setTimeout(() => setReassignmentNotice(null), 5000);
+    } else {
+      alert(res.error || 'Failed to transfer administrator');
+    }
+  };
+
+  const handleReassignTrainerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school || !selectedTrainerForReassign || !trainerTargetSchoolId) return;
+    const res = await reassignTrainer(selectedTrainerForReassign, school.id, trainerTargetSchoolId, trainerAuditNote);
+    if (res.success) {
+      setReassignmentNotice(`Master trainer reassigned successfully.`);
+      setIsReassignTrainerOpen(false);
+      setTimeout(() => setReassignmentNotice(null), 5000);
+    } else {
+      alert(res.error || 'Failed to reassign trainer');
+    }
+  };
 
   // School-specific course assignments
   const schoolAssignments = useMemo(() => {
@@ -309,6 +393,40 @@ export default function SchoolDetailsPage() {
                 Edit Profile
               </Button>
 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setReassignPrincipalForm({
+                    firstName: school.principalName?.split(' ')[0] || '',
+                    lastName: school.principalName?.split(' ').slice(1).join(' ') || '',
+                    email: school.email || '',
+                    phone: school.phone || '',
+                    designation: 'Principal & Institutional Head',
+                    newPassword: '',
+                    auditNote: 'Leadership reassignment'
+                  });
+                  setIsReassignPrincipalOpen(true);
+                }}
+                className="bg-slate-800/80 border-slate-700 hover:bg-slate-700 text-white text-xs font-semibold gap-1.5"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                Reassign Principal
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setTransferTargetSchoolId(otherRealSchools[0]?.id || '');
+                  setIsTransferAdminOpen(true);
+                }}
+                className="bg-slate-800/80 border-slate-700 hover:bg-slate-700 text-white text-xs font-semibold gap-1.5"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 text-purple-400" />
+                Transfer Admin
+              </Button>
+
               <Link href={`/admin/schools/${school.id}/pricing`}>
                 <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold gap-1.5">
                   <CreditCard className="w-3.5 h-3.5" />
@@ -396,6 +514,18 @@ export default function SchoolDetailsPage() {
             </div>
           </div>
         </Card>
+
+        {reassignmentNotice && (
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{reassignmentNotice}</span>
+            </div>
+            <button onClick={() => setReassignmentNotice(null)} className="text-emerald-600 hover:text-emerald-900">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* School Suspension Alert Banner */}
         {(!school.isActive || school.suspensionDetails?.isSuspended) && (
@@ -669,6 +799,28 @@ export default function SchoolDetailsPage() {
                 <p className="text-sm font-bold text-slate-900">{school.principalName || 'Principal In-charge'}</p>
                 <p className="text-slate-600">Email: {school.email}</p>
                 <p className="text-slate-600">Phone: {school.phone}</p>
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setReassignPrincipalForm({
+                        firstName: school.principalName?.split(' ')[0] || '',
+                        lastName: school.principalName?.split(' ').slice(1).join(' ') || '',
+                        email: school.email || '',
+                        phone: school.phone || '',
+                        designation: 'Principal & Institutional Head',
+                        newPassword: '',
+                        auditNote: 'Leadership reassignment'
+                      });
+                      setIsReassignPrincipalOpen(true);
+                    }}
+                    className="text-[11px] font-bold text-indigo-700 border-indigo-200 hover:bg-indigo-50 h-7 px-2.5"
+                  >
+                    <UserCheck className="w-3 h-3 mr-1" />
+                    Reassign Leadership
+                  </Button>
+                </div>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
@@ -1198,6 +1350,283 @@ export default function SchoolDetailsPage() {
           isOpen={isWelcomeKitOpen}
           onClose={() => setIsWelcomeKitOpen(false)}
         />
+
+        {/* Modal: Reassign Principal / School Admin */}
+        {isReassignPrincipalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+            <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl p-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">Reassign School Principal / Administrator</h3>
+                    <p className="text-[11px] text-slate-500">{school.name} ({school.code})</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsReassignPrincipalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleReassignPrincipalSubmit} className="space-y-3.5 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">First Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={reassignPrincipalForm.firstName}
+                      onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, firstName: e.target.value })}
+                      className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Last Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={reassignPrincipalForm.lastName}
+                      onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, lastName: e.target.value })}
+                      className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Official Institutional Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={reassignPrincipalForm.email}
+                    onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, email: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Contact Phone</label>
+                    <input
+                      type="tel"
+                      value={reassignPrincipalForm.phone}
+                      onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, phone: e.target.value })}
+                      className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Designation</label>
+                    <input
+                      type="text"
+                      value={reassignPrincipalForm.designation}
+                      onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, designation: e.target.value })}
+                      className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Temporary Initial Password (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="Auto-generate secure temporary key if blank"
+                    value={reassignPrincipalForm.newPassword}
+                    onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, newPassword: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px]"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Audit Reassignment Note</label>
+                  <input
+                    type="text"
+                    value={reassignPrincipalForm.auditNote}
+                    onChange={(e) => setReassignPrincipalForm({ ...reassignPrincipalForm, auditNote: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-[11px]"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsReassignPrincipalOpen(false)}
+                    className="text-xs font-bold"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+                  >
+                    Confirm Leadership Reassignment
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Transfer Administrator */}
+        {isTransferAdminOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+            <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl p-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                    <ArrowRightLeft className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">Transfer School Administrator</h3>
+                    <p className="text-[11px] text-slate-500">From {school.name} to another partner institution</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsTransferAdminOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleTransferAdminSubmit} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Target School *</label>
+                  <select
+                    required
+                    value={transferTargetSchoolId}
+                    onChange={(e) => setTransferTargetSchoolId(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                  >
+                    {otherRealSchools.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.code}) — {s.city}, {s.state}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Transfer Rationale / Audit Note</label>
+                  <input
+                    type="text"
+                    value={transferAuditNote}
+                    onChange={(e) => setTransferAuditNote(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-[11px] leading-relaxed">
+                  Transferring will update the administrator&apos;s institutional tenant context, school affiliation, and all associated management scopes.
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsTransferAdminOpen(false)}
+                    className="text-xs font-bold"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold"
+                  >
+                    Execute Admin Transfer
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Reassign Trainer */}
+        {isReassignTrainerOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+            <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl p-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <ArrowRightLeft className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">Reassign Master Trainer</h3>
+                    <p className="text-[11px] text-slate-500">Rebalance STEM master trainers across partner schools</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsReassignTrainerOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleReassignTrainerSubmit} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Select Trainer *</label>
+                  <select
+                    required
+                    value={selectedTrainerForReassign}
+                    onChange={(e) => setSelectedTrainerForReassign(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                  >
+                    {trainers.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.specialization}) — {t.experienceYears}y exp
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Destination Partner School *</label>
+                  <select
+                    required
+                    value={trainerTargetSchoolId}
+                    onChange={(e) => setTrainerTargetSchoolId(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                  >
+                    {otherRealSchools.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.code}) — {s.city}, {s.state}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Allocation / Rebalancing Rationale</label>
+                  <input
+                    type="text"
+                    value={trainerAuditNote}
+                    onChange={(e) => setTrainerAuditNote(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsReassignTrainerOpen(false)}
+                    className="text-xs font-bold"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+                  >
+                    Reassign Master Trainer
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

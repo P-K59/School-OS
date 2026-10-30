@@ -40,7 +40,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
   const errorParam = searchParams.get('error');
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, authProvider, cognitoConfigError } = useAuth();
   
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -298,6 +298,17 @@ function LoginForm() {
                 </p>
               </div>
 
+              {/* AWS Cognito Configuration Alert */}
+              {authProvider === 'COGNITO' && cognitoConfigError && (
+                <div className="mb-4 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5" role="alert">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <span className="font-bold block text-amber-800">AWS Cognito Gateway Misconfigured</span>
+                    <span>AWS Cognito Authentication Gateway Misconfigured: Missing User Pool ID or Client ID. Fallback to demo credentials is strictly prohibited in Cognito mode. Please contact your system administrator.</span>
+                  </div>
+                </div>
+              )}
+
               {/* Login Form */}
               <form onSubmit={handleLogin} className="space-y-4">
                 
@@ -434,16 +445,18 @@ function LoginForm() {
                 </Link>
               </div>
 
-              {/* Discreet Demo Preview Link to Landing Page */}
-              <div className="mt-2 text-center">
-                <Link
-                  href="/?demo=open"
-                  className="text-xs text-slate-500 hover:text-blue-600 font-semibold transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Looking for the Demo Preview? Explore sample sandbox on Home Page</span>
-                  <span className="group-hover:translate-x-0.5 transition-transform">&rarr;</span>
-                </Link>
-              </div>
+              {/* Discreet Demo Preview Link to Landing Page (Only in non-Cognito mode) */}
+              {authProvider !== 'COGNITO' && (
+                <div className="mt-2 text-center">
+                  <Link
+                    href="/?demo=open"
+                    className="text-xs text-slate-500 hover:text-blue-600 font-semibold transition-colors inline-flex items-center gap-1 group"
+                  >
+                    <span>Looking for the Demo Preview? Explore sample sandbox on Home Page</span>
+                    <span className="group-hover:translate-x-0.5 transition-transform">&rarr;</span>
+                  </Link>
+                </div>
+              )}
 
               {/* Terms of Service & Privacy Policy */}
               <p className="text-[11px] text-slate-400 text-center mt-4 leading-normal">

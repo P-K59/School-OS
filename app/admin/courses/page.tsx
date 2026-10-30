@@ -4,7 +4,8 @@ import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/layout/app-shell';
 import { useAuth } from '@/lib/auth/context';
-import { Course, SchoolCourseAssignment } from '@/lib/types';
+import { Course, SchoolCourseAssignment, CourseModule, CourseLesson, CourseActivity, CourseAssessment, LessonType } from '@/lib/types';
+import { isRealSchool } from '@/lib/db/mock-data';
 import {
   BookOpen,
   Search,
@@ -30,7 +31,20 @@ import {
   SlidersHorizontal,
   ChevronDown,
   BookCheck,
-  Check
+  Check,
+  Trash2,
+  Copy,
+  Archive,
+  Eye,
+  EyeOff,
+  FileText,
+  Video,
+  Award,
+  HelpCircle,
+  FolderPlus,
+  ArrowUp,
+  ArrowDown,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function SuperAdminCourseCatalogPage() {
@@ -38,10 +52,21 @@ export default function SuperAdminCourseCatalogPage() {
     courses, 
     schools, 
     schoolCourseAssignments, 
+    enrollments,
     addCourse, 
+    updateCourse,
+    deleteCourse,
+    archiveCourse,
+    duplicateCourse,
+    toggleCoursePublish,
     updateCoursePrice,
     assignCourseToSchool 
   } = useAuth();
+
+  // Filter strictly to active, real, non-demo schools
+  const realActiveSchools = useMemo(() => {
+    return schools.filter(isRealSchool).filter(s => s.isActive);
+  }, [schools]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -54,6 +79,37 @@ export default function SuperAdminCourseCatalogPage() {
   const [selectedCourseForAssign, setSelectedCourseForAssign] = useState<Course | null>(null);
   const [editingPriceCourse, setEditingPriceCourse] = useState<Course | null>(null);
   const [newPriceValue, setNewPriceValue] = useState<number>(999);
+
+  // New Lifecycle & Management Modal States
+  const [selectedCourseForEdit, setSelectedCourseForEdit] = useState<Course | null>(null);
+  const [selectedCourseForDelete, setSelectedCourseForDelete] = useState<Course | null>(null);
+  const [selectedCourseForCurriculum, setSelectedCourseForCurriculum] = useState<Course | null>(null);
+  const [activeCurriculumModuleId, setActiveCurriculumModuleId] = useState<string | null>(null);
+  const [curriculumWorkingModules, setCurriculumWorkingModules] = useState<CourseModule[]>([]);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // Edit Form State
+  const [editCourseForm, setEditCourseForm] = useState<{
+    title: string;
+    description: string;
+    category: Course['category'];
+    difficulty: Course['difficulty'];
+    minGrade: number;
+    maxGrade: number;
+    pricePerStudent: number;
+    prerequisites: string;
+    learningOutcomes: string;
+  }>({
+    title: '',
+    description: '',
+    category: 'Coding',
+    difficulty: 'Intermediate',
+    minGrade: 6,
+    maxGrade: 9,
+    pricePerStudent: 999,
+    prerequisites: '',
+    learningOutcomes: '',
+  });
 
   // Quick Assignment Form State
   const [targetSchoolId, setTargetSchoolId] = useState<string>('');
@@ -209,6 +265,252 @@ export default function SuperAdminCourseCatalogPage() {
     setEditingPriceCourse(null);
   };
 
+  // Open Edit Modal
+  const handleOpenEditCourse = (course: Course) => {
+    setSelectedCourseForEdit(course);
+    setEditCourseForm({
+      title: course.title,
+      description: course.description,
+      category: course.category,
+      difficulty: course.difficulty,
+      minGrade: course.minGrade,
+      maxGrade: course.maxGrade,
+      pricePerStudent: course.pricePerStudent || 999,
+      prerequisites: course.prerequisites || '',
+      learningOutcomes: (course.learningOutcomes || []).join(', '),
+    });
+  };
+
+  // Submit Edit Course
+  const handleSaveEditCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCourseForEdit) return;
+    const outcomesArray = editCourseForm.learningOutcomes.split(',').map(s => s.trim()).filter(Boolean);
+    await updateCourse(selectedCourseForEdit.id, {
+      title: editCourseForm.title.trim(),
+      description: editCourseForm.description.trim(),
+      category: editCourseForm.category,
+      difficulty: editCourseForm.difficulty,
+      minGrade: Number(editCourseForm.minGrade),
+      maxGrade: Number(editCourseForm.maxGrade),
+      pricePerStudent: Number(editCourseForm.pricePerStudent),
+      prerequisites: editCourseForm.prerequisites.trim(),
+      learningOutcomes: outcomesArray.length > 0 ? outcomesArray : ['Critical Thinking', 'Problem Solving'],
+    });
+    setSelectedCourseForEdit(null);
+    setActionNotice(`Course "${editCourseForm.title}" updated successfully.`);
+    setTimeout(() => setActionNotice(null), 4000);
+  };
+
+  // Duplicate Course
+  const handleDuplicateCourse = async (courseId: string) => {
+    const res = await duplicateCourse(courseId);
+    if (res.success && res.course) {
+      setActionNotice(`Course cloned successfully as "${res.course.title}".`);
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      alert(res.error || 'Failed to duplicate course');
+    }
+  };
+
+  // Toggle Archive
+  const handleToggleArchive = async (course: Course) => {
+    const newArchived = !course.isArchived;
+    const res = await archiveCourse(course.id, newArchived);
+    if (res.success) {
+      setActionNotice(newArchived ? `Archived "${course.title}".` : `Unarchived "${course.title}".`);
+      setTimeout(() => setActionNotice(null), 4000);
+      if (selectedCourseForDelete) setSelectedCourseForDelete(null);
+    } else {
+      alert(res.error || 'Failed to update archive status');
+    }
+  };
+
+  // Toggle Publish
+  const handleTogglePublish = async (course: Course) => {
+    const newPublish = !course.isPublished;
+    const res = await toggleCoursePublish(course.id, newPublish);
+    if (res.success) {
+      setActionNotice(newPublish ? `Published "${course.title}".` : `Unpublished "${course.title}".`);
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      alert(res.error || 'Failed to update publish status');
+    }
+  };
+
+  // Delete Course
+  const handleConfirmDelete = async (force = false) => {
+    if (!selectedCourseForDelete) return;
+    const res = await deleteCourse(selectedCourseForDelete.id, force);
+    if (res.success) {
+      setActionNotice(`Course "${selectedCourseForDelete.title}" deleted.`);
+      setTimeout(() => setActionNotice(null), 4000);
+      setSelectedCourseForDelete(null);
+    } else {
+      alert(res.error || 'Deletion blocked: Active enrollments or school contracts exist.');
+    }
+  };
+
+  // Open Curriculum Builder
+  const handleOpenCurriculum = (course: Course) => {
+    setSelectedCourseForCurriculum(course);
+    const existing: CourseModule[] = course.modules && course.modules.length > 0 ? course.modules : [
+      {
+        id: `mod-1-${Date.now()}`,
+        courseId: course.id,
+        title: 'Module 1: Foundations & Core Concepts',
+        order: 1,
+        description: 'Introduction and foundational fundamentals.',
+        isPublished: true,
+        lessons: [
+          {
+            id: `les-1-1-${Date.now()}`,
+            moduleId: `mod-1-${Date.now()}`,
+            title: 'Lesson 1.1: Architecture & Overview',
+            order: 1,
+            durationMinutes: 45,
+            lessonType: 'VIDEO' as LessonType,
+            resourceUrl: 'https://cdn.innovatmind.com/curriculum/video1.mp4',
+            completionCriteria: 'Watch video and complete activity',
+            isPublished: true,
+            activities: [
+              {
+                id: `act-1-1-1`,
+                lessonId: `les-1-1-${Date.now()}`,
+                title: 'Lab Exercise 1: First Hands-on Execution',
+                instructions: 'Follow the guided exercise in the sandbox environment.',
+                activityType: 'LAB_EXERCISE',
+                maxScore: 20
+              }
+            ],
+            assessments: [
+              {
+                id: `ass-1-1-1`,
+                lessonId: `les-1-1-${Date.now()}`,
+                title: 'Module 1 Checkpoint Quiz',
+                questionsCount: 5,
+                passingScorePercent: 80
+              }
+            ]
+          }
+        ]
+      }
+    ];
+    setCurriculumWorkingModules(existing);
+    setActiveCurriculumModuleId(existing[0]?.id || null);
+  };
+
+  // Save Curriculum Builder
+  const handleSaveCurriculum = async () => {
+    if (!selectedCourseForCurriculum) return;
+    const totalLessons = curriculumWorkingModules.reduce((acc, m) => acc + (m.lessons?.length || 0), 0);
+    await updateCourse(selectedCourseForCurriculum.id, {
+      modules: curriculumWorkingModules,
+      totalModules: curriculumWorkingModules.length,
+      totalLessons: totalLessons > 0 ? totalLessons : 1
+    });
+    setActionNotice(`Curriculum for "${selectedCourseForCurriculum.title}" saved successfully (${curriculumWorkingModules.length} Modules, ${totalLessons} Lessons).`);
+    setTimeout(() => setActionNotice(null), 4000);
+    setSelectedCourseForCurriculum(null);
+  };
+
+  const handleAddModule = () => {
+    if (!selectedCourseForCurriculum) return;
+    const newOrder = curriculumWorkingModules.length + 1;
+    const newMod: CourseModule = {
+      id: `mod-${newOrder}-${Date.now()}`,
+      courseId: selectedCourseForCurriculum.id,
+      title: `Module ${newOrder}: Advanced Application`,
+      order: newOrder,
+      description: 'Extended practical engineering applications.',
+      isPublished: true,
+      lessons: []
+    };
+    setCurriculumWorkingModules(prev => [...prev, newMod]);
+    setActiveCurriculumModuleId(newMod.id);
+  };
+
+  const handleDeleteModule = (moduleId: string) => {
+    setCurriculumWorkingModules(prev => {
+      const filtered = prev.filter(m => m.id !== moduleId);
+      return filtered.map((m, idx) => ({ ...m, order: idx + 1 }));
+    });
+    if (activeCurriculumModuleId === moduleId) {
+      const remaining = curriculumWorkingModules.filter(m => m.id !== moduleId);
+      setActiveCurriculumModuleId(remaining[0]?.id || null);
+    }
+  };
+
+  const handleAddLesson = (moduleId: string) => {
+    setCurriculumWorkingModules(prev => prev.map(m => {
+      if (m.id !== moduleId) return m;
+      const lessonOrder = (m.lessons?.length || 0) + 1;
+      const newLesson: CourseLesson = {
+        id: `les-${m.order}-${lessonOrder}-${Date.now()}`,
+        moduleId,
+        title: `Lesson ${m.order}.${lessonOrder}: Practical Implementation`,
+        order: lessonOrder,
+        durationMinutes: 45,
+        lessonType: 'VIDEO',
+        resourceUrl: '',
+        completionCriteria: 'Complete quiz and assignment',
+        isPublished: true,
+        activities: [],
+        assessments: []
+      };
+      return { ...m, lessons: [...(m.lessons || []), newLesson] };
+    }));
+  };
+
+  const handleDeleteLesson = (moduleId: string, lessonId: string) => {
+    setCurriculumWorkingModules(prev => prev.map(m => {
+      if (m.id !== moduleId) return m;
+      const filtered = (m.lessons || []).filter(l => l.id !== lessonId);
+      return { ...m, lessons: filtered.map((l, idx) => ({ ...l, order: idx + 1 })) };
+    }));
+  };
+
+  const handleAddActivity = (moduleId: string, lessonId: string) => {
+    setCurriculumWorkingModules(prev => prev.map(m => {
+      if (m.id !== moduleId) return m;
+      return {
+        ...m,
+        lessons: (m.lessons || []).map(l => {
+          if (l.id !== lessonId) return l;
+          const newAct: CourseActivity = {
+            id: `act-${Date.now()}`,
+            lessonId,
+            title: `Hands-on Project Task ${(l.activities?.length || 0) + 1}`,
+            instructions: 'Implement the core algorithmic pattern in code.',
+            activityType: 'LAB_EXERCISE',
+            maxScore: 25
+          };
+          return { ...l, activities: [...(l.activities || []), newAct] };
+        })
+      };
+    }));
+  };
+
+  const handleAddAssessment = (moduleId: string, lessonId: string) => {
+    setCurriculumWorkingModules(prev => prev.map(m => {
+      if (m.id !== moduleId) return m;
+      return {
+        ...m,
+        lessons: (m.lessons || []).map(l => {
+          if (l.id !== lessonId) return l;
+          const newAss: CourseAssessment = {
+            id: `ass-${Date.now()}`,
+            lessonId,
+            title: `Knowledge Quiz Checkpoint ${(l.assessments?.length || 0) + 1}`,
+            questionsCount: 5,
+            passingScorePercent: 75
+          };
+          return { ...l, assessments: [...(l.assessments || []), newAss] };
+        })
+      };
+    }));
+  };
+
   return (
     <AppShell>
       <div className="space-y-6 pb-12 animate-fade-in">
@@ -261,6 +563,18 @@ export default function SuperAdminCourseCatalogPage() {
               <span>{assignSuccessNotice}</span>
             </div>
             <button onClick={() => setAssignSuccessNotice(null)} className="text-emerald-600 hover:text-emerald-900">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {actionNotice && (
+          <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold flex items-center justify-between shadow-xs animate-fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>{actionNotice}</span>
+            </div>
+            <button onClick={() => setActionNotice(null)} className="text-indigo-600 hover:text-indigo-900">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -425,16 +739,35 @@ export default function SuperAdminCourseCatalogPage() {
                 <div>
                   <div className="p-5 bg-gradient-to-br from-slate-900 to-indigo-950 text-white relative">
                     <div className="flex items-start justify-between gap-2 mb-3">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/10 backdrop-blur-md border border-white/15 text-indigo-200">
-                        {course.category}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        course.difficulty === 'Beginner' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                        course.difficulty === 'Intermediate' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
-                        'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}>
-                        {course.difficulty}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/10 backdrop-blur-md border border-white/15 text-indigo-200">
+                          {course.category}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                          course.difficulty === 'Beginner' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                          course.difficulty === 'Intermediate' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
+                          'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {course.difficulty}
+                        </span>
+                      </div>
+
+                      {/* Lifecycle Status Badge */}
+                      <div>
+                        {course.isArchived ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                            ARCHIVED
+                          </span>
+                        ) : course.isPublished ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">
+                            PUBLISHED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40">
+                            DRAFT
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <h3 className="text-base font-extrabold text-white leading-snug group-hover:text-indigo-200 transition-colors">
@@ -516,25 +849,76 @@ export default function SuperAdminCourseCatalogPage() {
                   </div>
                 </div>
 
-                {/* Card Footer Actions */}
-                <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex items-center gap-2">
-                  <button
-                    onClick={() => setSelectedCourseForDetail(course)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors text-center"
-                  >
-                    View Syllabus
-                  </button>
+                {/* Card Footer Actions & Lifecycle Tooling */}
+                <div className="p-3 bg-slate-50/80 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <button
+                      onClick={() => handleOpenCurriculum(course)}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors"
+                      title="Open Curriculum & Lesson Builder"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Curriculum Builder</span>
+                    </button>
 
-                  <button
-                    onClick={() => {
-                      setSelectedCourseForAssign(course);
-                      setTargetSchoolId(schools[0]?.id || '');
-                    }}
-                    className="flex-1 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
-                  >
-                    <span>Assign to School</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditCourse(course)}
+                        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                        title="Edit Course Details"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDuplicateCourse(course.id)}
+                        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                        title="Duplicate Course"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleArchive(course)}
+                        className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                        title={course.isArchived ? "Unarchive Course" : "Archive Course"}
+                      >
+                        <Archive className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleTogglePublish(course)}
+                        className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                        title={course.isPublished ? "Unpublish Course" : "Publish Course"}
+                      >
+                        {course.isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => setSelectedCourseForDelete(course)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Delete Course (With Dependency Verification)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                    <button
+                      onClick={() => setSelectedCourseForDetail(course)}
+                      className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors text-center"
+                    >
+                      Syllabus Overview
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSelectedCourseForAssign(course);
+                        setTargetSchoolId(realActiveSchools[0]?.id || '');
+                      }}
+                      className="flex-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1"
+                    >
+                      <span>Assign to School</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -752,7 +1136,7 @@ export default function SuperAdminCourseCatalogPage() {
                     onChange={(e) => setTargetSchoolId(e.target.value)}
                     className="w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    {schools.map(school => (
+                    {realActiveSchools.map(school => (
                       <option key={school.id} value={school.id}>
                         {school.name} ({school.code}) — {school.city}, {school.state}
                       </option>
@@ -965,6 +1349,523 @@ export default function SuperAdminCourseCatalogPage() {
             </div>
           </div>
         )}
+
+        {/* Modal 5: Delete Course Confirmation with Safety Guard */}
+        {selectedCourseForDelete && (() => {
+          const associatedAssignments = schoolCourseAssignments.filter(a => a.courseId === selectedCourseForDelete.id);
+          const associatedEnrollments = enrollments.filter(e => e.courseId === selectedCourseForDelete.id);
+          const hasActiveDependencies = associatedAssignments.length > 0 || associatedEnrollments.length > 0;
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+              <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${hasActiveDependencies ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                      {hasActiveDependencies ? <Shield className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900">
+                        {hasActiveDependencies ? 'Course Deletion Blocked' : 'Confirm Permanent Deletion'}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-mono">ID: {selectedCourseForDelete.id}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedCourseForDelete(null)} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+                  <div className="font-bold text-slate-900 text-sm">
+                    {selectedCourseForDelete.title}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 block">Assigned Schools:</span>
+                      <strong className="text-slate-800">{associatedAssignments.length} Schools</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Enrolled Students:</span>
+                      <strong className="text-slate-800">{associatedEnrollments.length} Students</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {hasActiveDependencies ? (
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="leading-relaxed">
+                        <strong>Active academic dependencies detected.</strong> Deleting this course will corrupt student learning transcripts, assessment logs, and partner school contracts.
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-amber-700">
+                      Recommendation: Archive the course instead. Archiving hides the course from new enrollments while safeguarding historical records.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">
+                      Are you sure you want to permanently delete this course? This action cannot be undone.
+                    </span>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCourseForDelete(null)}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+
+                  {hasActiveDependencies ? (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleArchive(selectedCourseForDelete)}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>Archive Course Instead</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmDelete(false)}
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Permanently</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Modal 6: Edit Course Modal */}
+        {selectedCourseForEdit && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+            <div className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <Edit3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Edit InnovatMind Course</h3>
+                    <p className="text-xs text-slate-500">Update curriculum metadata, target grade bands, and central pricing.</p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedCourseForEdit(null)} className="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditCourse} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Course Title *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editCourseForm.title}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, title: e.target.value })}
+                      className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Discipline Category</label>
+                    <select
+                      value={editCourseForm.category}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, category: e.target.value as any })}
+                      className="w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="Robotics">Robotics & Hardware</option>
+                      <option value="AI">Artificial Intelligence & ML</option>
+                      <option value="Coding">Coding & Logic</option>
+                      <option value="IoT">IoT & Embedded Systems</option>
+                      <option value="STEM Foundations">STEM Foundations</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Difficulty Level</label>
+                    <select
+                      value={editCourseForm.difficulty}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, difficulty: e.target.value as any })}
+                      className="w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="Beginner">Beginner</option>
+                      <option value="Intermediate">Intermediate</option>
+                      <option value="Advanced">Advanced</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Min Grade (Class)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={editCourseForm.minGrade}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, minGrade: Number(e.target.value) })}
+                      className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Max Grade (Class)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={editCourseForm.maxGrade}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, maxGrade: Number(e.target.value) })}
+                      className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Base Price Per Student (₹)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={50}
+                      value={editCourseForm.pricePerStudent}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, pricePerStudent: Number(e.target.value) })}
+                      className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Prerequisites</label>
+                    <input
+                      type="text"
+                      value={editCourseForm.prerequisites}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, prerequisites: e.target.value })}
+                      className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Course Description *</label>
+                    <textarea
+                      rows={3}
+                      required
+                      value={editCourseForm.description}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, description: e.target.value })}
+                      className="w-full p-3 text-xs font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Learning Outcomes (comma separated)</label>
+                    <input
+                      type="text"
+                      value={editCourseForm.learningOutcomes}
+                      onChange={(e) => setEditCourseForm({ ...editCourseForm, learningOutcomes: e.target.value })}
+                      className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCourseForEdit(null)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20"
+                  >
+                    Save Course Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 7: Curriculum & Lesson Builder Modal */}
+        {selectedCourseForCurriculum && (() => {
+          const activeModule = curriculumWorkingModules.find(m => m.id === activeCurriculumModuleId) || curriculumWorkingModules[0];
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+              <div className="w-full max-w-5xl bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 max-h-[92vh] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900">
+                          Curriculum Builder: {selectedCourseForCurriculum.title}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Configure Modules → Lessons → Activities → Quizzes & Assessments
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => setSelectedCourseForCurriculum(null)} className="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Two Column Layout: Modules Sidebar + Lessons Editor */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 max-h-[62vh] overflow-hidden">
+                    {/* Modules List (Left Column) */}
+                    <div className="md:col-span-4 border border-slate-200 rounded-xl p-3 flex flex-col justify-between bg-slate-50/50 overflow-y-auto max-h-[60vh]">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Modules ({curriculumWorkingModules.length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleAddModule}
+                            className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add Module</span>
+                          </button>
+                        </div>
+
+                        {curriculumWorkingModules.map((mod) => {
+                          const isActive = mod.id === activeCurriculumModuleId;
+                          return (
+                            <div
+                              key={mod.id}
+                              onClick={() => setActiveCurriculumModuleId(mod.id)}
+                              className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                                isActive
+                                  ? 'bg-white border-indigo-500 shadow-sm ring-1 ring-indigo-500'
+                                  : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-900 truncate">
+                                  {mod.title}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteModule(mod.id);
+                                  }}
+                                  className="text-slate-400 hover:text-rose-600 p-1"
+                                  title="Delete Module"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+                                <span>{mod.lessons?.length || 0} Lessons</span>
+                                <span>•</span>
+                                <span>Order #{mod.order}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Lessons & Content Editor (Right Column) */}
+                    <div className="md:col-span-8 border border-slate-200 rounded-xl p-4 overflow-y-auto max-h-[60vh] space-y-4">
+                      {activeModule ? (
+                        <>
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">
+                                Active Module
+                              </span>
+                              <input
+                                type="text"
+                                value={activeModule.title}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCurriculumWorkingModules(prev => prev.map(m => m.id === activeModule.id ? { ...m, title: val } : m));
+                                }}
+                                className="text-sm font-bold text-slate-900 block border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none w-full"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddLesson(activeModule.id)}
+                              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add Lesson</span>
+                            </button>
+                          </div>
+
+                          {/* Lessons list */}
+                          <div className="space-y-3">
+                            {(activeModule.lessons || []).length === 0 ? (
+                              <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                                No lessons added yet in this module. Click "Add Lesson" above to get started.
+                              </div>
+                            ) : (
+                              (activeModule.lessons || []).map((lesson) => (
+                                <div key={lesson.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-1">
+                                      <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center">
+                                        {lesson.order}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={lesson.title}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setCurriculumWorkingModules(prev => prev.map(m => m.id === activeModule.id ? {
+                                            ...m,
+                                            lessons: (m.lessons || []).map(l => l.id === lesson.id ? { ...l, title: val } : l)
+                                          } : m));
+                                        }}
+                                        className="text-xs font-bold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none flex-1"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <select
+                                        value={lesson.lessonType}
+                                        onChange={(e) => {
+                                          const val = e.target.value as LessonType;
+                                          setCurriculumWorkingModules(prev => prev.map(m => m.id === activeModule.id ? {
+                                            ...m,
+                                            lessons: (m.lessons || []).map(l => l.id === lesson.id ? { ...l, lessonType: val } : l)
+                                          } : m));
+                                        }}
+                                        className="text-[11px] font-bold rounded-lg border border-slate-200 px-2 py-1 bg-white"
+                                      >
+                                        <option value="VIDEO">Video</option>
+                                        <option value="DOCUMENT">Document</option>
+                                        <option value="PDF">PDF</option>
+                                        <option value="ACTIVITY">Activity</option>
+                                        <option value="QUIZ">Quiz</option>
+                                      </select>
+
+                                      <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                                        <input
+                                          type="number"
+                                          min={5}
+                                          max={180}
+                                          value={lesson.durationMinutes}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value);
+                                            setCurriculumWorkingModules(prev => prev.map(m => m.id === activeModule.id ? {
+                                              ...m,
+                                              lessons: (m.lessons || []).map(l => l.id === lesson.id ? { ...l, durationMinutes: val } : l)
+                                            } : m));
+                                          }}
+                                          className="w-12 px-1.5 py-1 text-center font-bold rounded-lg border border-slate-200 bg-white"
+                                        />
+                                        <span>min</span>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteLesson(activeModule.id, lesson.id)}
+                                        className="text-slate-400 hover:text-rose-600 p-1"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Sub-items: Activities and Assessments */}
+                                  <div className="pt-2 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    {/* Activities */}
+                                    <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 space-y-1.5">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                        <span>Activities ({lesson.activities?.length || 0})</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAddActivity(activeModule.id, lesson.id)}
+                                          className="text-indigo-600 hover:text-indigo-800 font-bold"
+                                        >
+                                          + Add
+                                        </button>
+                                      </div>
+                                      {(lesson.activities || []).map((act) => (
+                                        <div key={act.id} className="text-[11px] p-1.5 rounded bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                          <span className="truncate">{act.title} ({act.activityType})</span>
+                                          <span className="text-slate-400 font-bold">{act.maxScore} pts</span>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {/* Assessments / Quizzes */}
+                                    <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 space-y-1.5">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                        <span>Assessments ({lesson.assessments?.length || 0})</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAddAssessment(activeModule.id, lesson.id)}
+                                          className="text-indigo-600 hover:text-indigo-800 font-bold"
+                                        >
+                                          + Add
+                                        </button>
+                                      </div>
+                                      {(lesson.assessments || []).map((ass) => (
+                                        <div key={ass.id} className="text-[11px] p-1.5 rounded bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                          <span className="truncate">{ass.title}</span>
+                                          <span className="text-slate-400 font-bold">{ass.questionsCount} Qs ({ass.passingScorePercent}%)</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-12 text-center text-slate-400 text-xs">
+                          Select or add a module from the left column.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Save CTA */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <div className="text-xs text-slate-500">
+                    {curriculumWorkingModules.length} Modules • {curriculumWorkingModules.reduce((acc, m) => acc + (m.lessons?.length || 0), 0)} Lessons
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCourseForCurriculum(null)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveCurriculum}
+                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20"
+                    >
+                      Save Curriculum Structure
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     </AppShell>

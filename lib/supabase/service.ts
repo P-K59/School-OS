@@ -467,5 +467,115 @@ export const productionService = {
     if (!schoolId) return [];
     const allAssignments = getLocalProdStore<any[]>(PROD_STORAGE_ASSIGNMENTS, []);
     return allAssignments.filter(a => a.schoolId === schoolId);
+  },
+
+  /**
+   * Subscribes to Supabase Realtime changes on public.schools table.
+   * Returns a cleanup unsubscribe function.
+   */
+  subscribeToSchools(callbacks: {
+    onInsert?: (school: School) => void;
+    onUpdate?: (school: School) => void;
+    onDelete?: (schoolId: string) => void;
+    onError?: (error: any) => void;
+  }): () => void {
+    if (!supabase || typeof supabase.channel !== 'function') {
+      return () => {};
+    }
+
+    try {
+      const channelId = `realtime_schools_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const channel = supabase.channel(channelId);
+
+      channel
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'schools' },
+          (payload) => {
+            if (payload && payload.new) {
+              const row = payload.new as any;
+              const school: School = {
+                id: row.id,
+                registrationId: row.registration_id || row.code,
+                code: row.code,
+                name: row.name,
+                schoolType: row.school_type || 'CBSE',
+                email: row.email,
+                phone: row.phone,
+                address: row.address || '',
+                city: row.city || '',
+                state: row.state || '',
+                country: row.country || 'India',
+                postalCode: row.postal_code || '',
+                isActive: Boolean(row.is_active),
+                isDemo: false,
+                totalStudents: row.total_students || 0,
+                totalStaff: row.total_staff || 1,
+                enrolledCoursesCount: row.enrolled_courses_count || 0,
+                createdAt: row.created_at || new Date().toISOString(),
+                onboardingStatus: row.onboarding_status || 'PENDING_APPROVAL',
+                approvalDetails: row.approval_details
+              };
+              callbacks.onInsert?.(school);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'schools' },
+          (payload) => {
+            if (payload && payload.new) {
+              const row = payload.new as any;
+              const school: School = {
+                id: row.id,
+                registrationId: row.registration_id || row.code,
+                code: row.code,
+                name: row.name,
+                schoolType: row.school_type || 'CBSE',
+                email: row.email,
+                phone: row.phone,
+                address: row.address || '',
+                city: row.city || '',
+                state: row.state || '',
+                country: row.country || 'India',
+                postalCode: row.postal_code || '',
+                isActive: Boolean(row.is_active),
+                isDemo: false,
+                totalStudents: row.total_students || 0,
+                totalStaff: row.total_staff || 1,
+                enrolledCoursesCount: row.enrolled_courses_count || 0,
+                createdAt: row.created_at || new Date().toISOString(),
+                onboardingStatus: row.onboarding_status || 'ACTIVE',
+                approvalDetails: row.approval_details
+              };
+              callbacks.onUpdate?.(school);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'schools' },
+          (payload) => {
+            if (payload && payload.old && (payload.old as any).id) {
+              callbacks.onDelete?.((payload.old as any).id);
+            }
+          }
+        )
+        .subscribe((status, err) => {
+          if (status === 'CHANNEL_ERROR' || err) {
+            callbacks.onError?.(err || new Error(`Realtime subscription status: ${status}`));
+          }
+        });
+
+      return () => {
+        try {
+          supabase.removeChannel(channel);
+        } catch {}
+      };
+    } catch (subErr) {
+      callbacks.onError?.(subErr);
+      return () => {};
+    }
   }
 };
+

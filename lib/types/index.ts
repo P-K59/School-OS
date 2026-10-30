@@ -235,23 +235,106 @@ export interface Student {
   createdAt: string;
 }
 
+export type AuthProviderType = 'SUPABASE' | 'COGNITO' | 'DEMO';
+export type AuthProvider = AuthProviderType;
+
+export type LessonType = 'VIDEO' | 'DOCUMENT' | 'PDF' | 'ACTIVITY' | 'QUIZ';
+
+export interface CourseActivity {
+  id: string;
+  lessonId: string;
+  title: string;
+  instructions: string;
+  activityType: 'PROJECT' | 'LAB_EXERCISE' | 'SIMULATION' | 'CODING_CHALLENGE';
+  maxScore: number;
+}
+
+export interface CourseAssessment {
+  id: string;
+  lessonId: string;
+  title: string;
+  questionsCount: number;
+  passingScorePercent: number;
+}
+
+export interface CourseLesson {
+  id: string;
+  moduleId: string;
+  title: string;
+  order: number;
+  durationMinutes: number;
+  lessonType: LessonType;
+  resourceUrl?: string;
+  contentMarkdown?: string;
+  completionCriteria?: string;
+  isPublished: boolean;
+  activities?: CourseActivity[];
+  assessments?: CourseAssessment[];
+}
+
+export interface CourseModule {
+  id: string;
+  courseId: string;
+  title: string;
+  order: number;
+  description?: string;
+  isPublished: boolean;
+  lessons: CourseLesson[];
+}
+
 export interface Course {
   id: string;
+  code?: string;
   title: string;
   slug: string;
   description: string;
   category: 'Coding' | 'Robotics' | 'AI' | 'IoT' | 'Digital Literacy' | 'STEM Foundations';
+  subject?: string;
+  language?: string;
   minGrade: number;
   maxGrade: number;
+  targetGrades?: string[];
   thumbnailUrl: string;
   isPublished: boolean;
+  isArchived?: boolean;
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   totalModules: number;
   totalLessons: number;
+  estimatedDurationHours?: number;
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
-  pricePerStudent: number; // Set & registered by Super Admin
+  pricePerStudent: number; // Set & registered by Super Admin (0 indicates free course when isFreeCourse is true)
+  isFreeCourse?: boolean;
   prerequisites?: string;
   learningOutcomes?: string[];
+  modules?: CourseModule[];
+  creatorName?: string;
+  creatorRole?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EnrollmentPriceSnapshot {
+  unitPrice: number;
+  discountPercent: number;
+  finalPricePerStudent: number;
+  billingBasis: BillingBasis | string;
+  currency: 'INR' | 'USD' | string;
+  resolvedRuleId?: string;
+  isFreeCourse?: boolean;
+  snapshotAt: string;
+}
+
+export interface BulkEnrollmentStudentRecord {
+  studentName: string;
+  studentId: string;
+  admissionNumber: string;
+  className: string;
+  sectionName?: string;
+  accountStatus: 'ACTIVE' | 'ACTIVATION_PENDING' | 'FAILED' | 'PROVISIONED';
+  result: 'SUCCESS' | 'FAILED';
+  reason?: string;
+  activationToken?: string;
+  activationUrl?: string;
 }
 
 export interface StudentEnrollment {
@@ -260,7 +343,7 @@ export interface StudentEnrollment {
   studentName: string;
   studentEmail: string;
   studentLoginId: string;
-  generatedPassword: string;
+  generatedPassword?: string;
   admissionNumber: string;
   schoolId: string;
   schoolName: string;
@@ -276,6 +359,9 @@ export interface StudentEnrollment {
   quizScoreAverage: number;
   status: 'ACTIVE' | 'COMPLETED' | 'IN_PROGRESS';
   currentModule: string;
+  accountStatus?: AccountStatus;
+  activationStatus?: 'ACTIVE' | 'PENDING_ACTIVATION' | 'FAILED';
+  priceSnapshot?: EnrollmentPriceSnapshot;
 }
 
 export interface BulkEnrollmentBatch {
@@ -286,17 +372,21 @@ export interface BulkEnrollmentBatch {
   courseTitle: string;
   targetGrade: string;
   totalEnrolled: number;
+  failedCount?: number;
   pricePerStudent: number;
   totalBilling: number;
+  priceSnapshot?: EnrollmentPriceSnapshot;
   enrolledAt: string;
   enrolledBy: string;
   studentCredentials: Array<{
     studentName: string;
     admissionNumber: string;
     loginId: string;
-    password: string;
+    password?: string;
     gradeName: string;
+    accountStatus?: string;
   }>;
+  enrolledStudentsResults?: BulkEnrollmentStudentRecord[];
 }
 
 export interface FeeInvoice {

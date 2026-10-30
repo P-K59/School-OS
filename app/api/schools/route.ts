@@ -85,6 +85,41 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true, school: result.school, message: 'Welcome Kit dispatched and logged successfully' });
     }
 
+    if (action === 'reassign_principal') {
+      const result = await serverDb.reassignSchoolPrincipal(
+        schoolId,
+        body.principalData || {
+          firstName: body.firstName || 'Principal',
+          lastName: body.lastName || 'Director',
+          email: body.email,
+          phone: body.phone,
+          designation: body.designation,
+          newPassword: body.newPassword
+        },
+        body.auditNote
+      );
+      return NextResponse.json({ success: true, school: result.school, message: result.message });
+    }
+
+    if (action === 'transfer_admin') {
+      const result = await serverDb.transferAdministrator(
+        body.userId,
+        body.targetSchoolId,
+        body.auditNote
+      );
+      return NextResponse.json({ success: true, user: result.user, message: result.message });
+    }
+
+    if (action === 'reassign_trainer') {
+      const result = await serverDb.reassignTrainer(
+        body.trainerId,
+        schoolId,
+        body.targetSchoolId,
+        body.auditNote
+      );
+      return NextResponse.json({ success: true, trainer: result.trainer, message: result.message });
+    }
+
     const updated = await serverDb.updateSchool(schoolId, updates);
     return NextResponse.json({ success: true, school: updated });
   } catch (err: any) {

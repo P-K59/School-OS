@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/data_cleanup_delete_controls_approval.test.js tests/modular_access_and_teacher_assignment.test.js tests/production_real_data_workflow.test.js tests/student_learning_portal.test.js tests/super_admin_workflow.test.js tests/unified_authentication_integration.test.js tests/pre_deployment_handover.test.js tests/end_to_end_production_readiness.test.js"
+    "test": "node --test tests/critical_data_consistency_and_course_management.test.js tests/data_cleanup_delete_controls_approval.test.js tests/modular_access_and_teacher_assignment.test.js tests/production_real_data_workflow.test.js tests/student_learning_portal.test.js tests/super_admin_workflow.test.js tests/unified_authentication_integration.test.js tests/pre_deployment_handover.test.js tests/end_to_end_production_readiness.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
