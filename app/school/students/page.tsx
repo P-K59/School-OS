@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { useAuth } from '@/lib/auth/context';
@@ -41,12 +41,30 @@ import {
   Bot,
   BrainCircuit,
   CreditCard,
-  FileText
+  FileText,
+  Calendar,
+  Wand2,
+  RefreshCw,
+  FileSpreadsheet
 } from 'lucide-react';
+import { BulkStudentImportModal } from '@/components/school/bulk-student-import-modal';
 
 function StudentsManagementPageContent() {
-  const { students, addStudent, markAttendance, activeSchool, resetStudentCredentials, provisionStudentAccount } = useAuth();
+  const {
+    students,
+    addStudent,
+    generateNextAdmissionNumber,
+    markAttendance,
+    markBatchAttendance,
+    getAttendanceForDate,
+    activeSchool,
+    resetStudentCredentials,
+    provisionStudentAccount,
+    dataMode
+  } = useAuth();
   const searchParams = useSearchParams();
+
+  const isDemo = dataMode === 'DEMO' && Boolean((activeSchool as any)?.isDemo || activeSchool?.id === 'sch-del-001' || activeSchool?.id === 'school-1');
 
   // Active Main Tab
   const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'ATTENDANCE_REGISTER' | 'AI_INSIGHTS'>('DIRECTORY');
@@ -65,33 +83,53 @@ function StudentsManagementPageContent() {
     }
   }, [searchParams]);
 
-  // Search and Filter State
+  // Search and Filter State (Directory)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   const [selectedFeeStatus, setSelectedFeeStatus] = useState<string>('ALL');
+
+  // Attendance Register Filter State (Date, Grade, Section)
+  const todayDateString = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const yesterdayDateString = useMemo(() => new Date(Date.now() - 86400000).toISOString().split('T')[0], []);
+  const [selectedAttendanceDate, setSelectedAttendanceDate] = useState<string>(todayDateString);
+  const [selectedAttendanceGrade, setSelectedAttendanceGrade] = useState<string>('ALL');
+  const [selectedAttendanceSection, setSelectedAttendanceSection] = useState<string>('ALL');
   
   // Selected Student for Detail Drawer & ID Card
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [idCardStudent, setIdCardStudent] = useState<Student | null>(null);
 
-  // Quick Notification Toast
+  // Quick Notification Toast & Modal Error Banner
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Modal State: Enroll Student
+  // Available Grades & Sections Scoped to Active School Tenant
+  const availableGrades = useMemo(() => {
+    const schoolGrades = initialGrades.filter(g => g.schoolId === activeSchool.id || (isDemo && g.schoolId === 'school-1'));
+    return schoolGrades.length > 0 ? schoolGrades : initialGrades.slice(0, 5);
+  }, [activeSchool.id, isDemo]);
+
+  const availableSections = useMemo(() => {
+    const schoolSecs = initialSections.filter(s => s.schoolId === activeSchool.id || (isDemo && s.schoolId === 'school-1'));
+    return schoolSecs.length > 0 ? schoolSecs : initialSections.slice(0, 4);
+  }, [activeSchool.id, isDemo]);
+
+  // Modal State: Enroll Student & Bulk Import
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
-    admissionNumber: `ADM-2025-${Math.floor(1000 + Math.random() * 9000)}`,
+    admissionNumber: '',
     rollNumber: '',
-    gradeId: 'grade-6',
-    sectionId: 'sec-6a',
+    gradeId: availableGrades[0]?.id || 'grade-6',
+    sectionId: availableSections[0]?.id || 'sec-6a',
     dob: '2013-06-15',
     gender: 'MALE' as GenderType,
     bloodGroup: 'B+',
@@ -102,18 +140,44 @@ function StudentsManagementPageContent() {
     photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=240&auto=format&fit=crop&q=80',
   });
 
-  // Filtered student list
+  // Auto-seed next admission number when opening modal or on mount
+  useEffect(() => {
+    if (isAddModalOpen && !formData.admissionNumber) {
+      setFormData(prev => ({
+        ...prev,
+        admissionNumber: generateNextAdmissionNumber(),
+        gradeId: availableGrades[0]?.id || 'grade-6',
+        sectionId: availableSections[0]?.id || 'sec-6a',
+      }));
+    }
+  }, [isAddModalOpen, activeSchool.id]);
+
+  // Filtered student list for Directory
   const filteredStudents = students.filter((s) => {
     const matchesSearch =
       `${s.firstName} ${s.lastName} ${s.admissionNumber} ${s.rollNumber}`
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
-    const matchesGrade = selectedGrade === 'ALL' || s.gradeId === selectedGrade;
+    const matchesGrade = selectedGrade === 'ALL' || s.gradeId === selectedGrade || s.gradeName === selectedGrade;
     const matchesFee = selectedFeeStatus === 'ALL' || s.feeStatus === selectedFeeStatus;
     return matchesSearch && matchesGrade && matchesFee;
   });
 
-  // Attendance metrics
+  // Filtered student list for Attendance Register
+  const attendanceFilteredStudents = students.filter((s) => {
+    const matchesGrade = selectedAttendanceGrade === 'ALL' || s.gradeId === selectedAttendanceGrade || s.gradeName === selectedAttendanceGrade;
+    const matchesSection = selectedAttendanceSection === 'ALL' || s.sectionId === selectedAttendanceSection || s.sectionName === selectedAttendanceSection;
+    return matchesGrade && matchesSection;
+  });
+
+  // Calculate actual saved attendance telemetry for the selected date & class/section
+  const currentDayAttendance = getAttendanceForDate(
+    selectedAttendanceDate,
+    selectedAttendanceGrade,
+    selectedAttendanceSection
+  );
+
+  // Overall Directory metrics
   const totalStudentsCount = students.length || 1;
   const presentCount = students.filter(s => (s.todayAttendance || 'PRESENT') === 'PRESENT').length;
   const absentCount = students.filter(s => s.todayAttendance === 'ABSENT').length;
@@ -125,77 +189,103 @@ function StudentsManagementPageContent() {
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.firstName || !formData.lastName || !formData.parentName) {
-      alert('Please fill in required student name and parent details.');
+    setModalError(null);
+
+    if (!formData.firstName?.trim() || !formData.lastName?.trim()) {
+      setModalError('Student first name and last name are required.');
+      return;
+    }
+    if (!formData.admissionNumber?.trim()) {
+      setModalError('Admission number is required.');
+      return;
+    }
+    if (!formData.parentName?.trim() || !formData.parentPhone?.trim()) {
+      setModalError('Guardian name and guardian phone number are required.');
       return;
     }
 
-    const grade = initialGrades.find(g => g.id === formData.gradeId) || initialGrades[0];
-    const section = initialSections.find(sec => sec.id === formData.sectionId) || initialSections[0];
+    const grade = availableGrades.find(g => g.id === formData.gradeId) || availableGrades[0];
+    const section = availableSections.find(sec => sec.id === formData.sectionId) || availableSections[0];
 
-    const newStudent = addStudent({
-      schoolId: activeSchool.id,
-      profileId: `prof-${Date.now()}`,
-      admissionNumber: formData.admissionNumber,
-      rollNumber: formData.rollNumber || `${grade.numericLevel}-A-${Math.floor(10 + Math.random() * 89)}`,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      email: formData.email || `${formData.firstName.toLowerCase()}.${formData.lastName[0]?.toLowerCase()}@student.school.in`,
-      gradeId: grade.id,
-      gradeName: grade.name,
-      sectionId: section.id,
-      sectionName: section.name,
-      sessionId: 'session-2025',
-      dob: formData.dob,
-      gender: formData.gender,
-      bloodGroup: formData.bloodGroup || 'O+',
-      address: formData.address || `${activeSchool.city}, India`,
-      photoUrl: formData.photoUrl || `https://images.unsplash.com/photo-1544717305-2782549b5136?w=240&auto=format&fit=crop&q=80`,
-      status: 'ACTIVE',
-      parentName: formData.parentName,
-      parentPhone: formData.parentPhone,
-      parentEmail: formData.parentEmail,
-      attendancePercentage: 100.0,
-      feeStatus: 'PENDING',
-      todayAttendance: 'PRESENT',
-    });
+    try {
+      const newStudent = addStudent({
+        schoolId: activeSchool.id,
+        profileId: `prof-${Date.now()}`,
+        admissionNumber: formData.admissionNumber.trim(),
+        rollNumber: formData.rollNumber.trim() || `${grade.numericLevel}-A-${Math.floor(10 + Math.random() * 89)}`,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim() || `${formData.firstName.toLowerCase()}.${formData.lastName[0]?.toLowerCase()}@student.school.in`,
+        gradeId: grade.id,
+        gradeName: grade.name,
+        sectionId: section.id,
+        sectionName: section.name,
+        sessionId: 'session-2025',
+        dob: formData.dob,
+        gender: formData.gender,
+        bloodGroup: formData.bloodGroup || 'O+',
+        address: formData.address || `${activeSchool.city}, India`,
+        photoUrl: formData.photoUrl || `https://images.unsplash.com/photo-1544717305-2782549b5136?w=240&auto=format&fit=crop&q=80`,
+        status: 'ACTIVE',
+        parentName: formData.parentName.trim(),
+        parentPhone: formData.parentPhone.trim(),
+        parentEmail: formData.parentEmail.trim(),
+        attendancePercentage: 100.0,
+        feeStatus: 'PENDING',
+        todayAttendance: 'PRESENT',
+      });
 
-    setIsAddModalOpen(false);
-    
-    // Automatically open the generated Student ID Card with their photo
-    setIdCardStudent(newStudent);
-    showToast(`Student ${newStudent.firstName} registered. Digital ID Card generated.`);
+      setIsAddModalOpen(false);
+      setModalError(null);
+      
+      // Automatically open the generated Student ID Card with their photo
+      setIdCardStudent(newStudent);
+      showToast(`Student ${newStudent.firstName} registered. Digital ID Card generated.`);
 
-    // Reset form
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      admissionNumber: `ADM-2025-${Math.floor(1000 + Math.random() * 9000)}`,
-      rollNumber: '',
-      gradeId: 'grade-6',
-      sectionId: 'sec-6a',
-      dob: '2013-06-15',
-      gender: 'MALE',
-      bloodGroup: 'B+',
-      address: '',
-      parentName: '',
-      parentPhone: '',
-      parentEmail: '',
-      photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=240&auto=format&fit=crop&q=80',
-    });
+      // Reset form with next sequence
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        admissionNumber: generateNextAdmissionNumber(),
+        rollNumber: '',
+        gradeId: availableGrades[0]?.id || 'grade-6',
+        sectionId: availableSections[0]?.id || 'sec-6a',
+        dob: '2013-06-15',
+        gender: 'MALE',
+        bloodGroup: 'B+',
+        address: '',
+        parentName: '',
+        parentPhone: '',
+        parentEmail: '',
+        photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=240&auto=format&fit=crop&q=80',
+      });
+    } catch (err: any) {
+      setModalError(err.message || 'An error occurred while enrolling the student.');
+    }
   };
 
-  const handleAttendanceChange = (studentId: string, status: 'PRESENT' | 'ABSENT' | 'LATE') => {
-    markAttendance(studentId, status);
-    showToast(`Marked ${status} for student.`);
+  const handleAttendanceChange = (studentId: string, status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED') => {
+    markAttendance(studentId, status, selectedAttendanceDate);
+    showToast(`Marked ${status} for ${selectedAttendanceDate}.`);
   };
 
-  const handleMarkAllPresent = () => {
-    filteredStudents.forEach(s => {
-      markAttendance(s.id, 'PRESENT');
-    });
-    showToast(`Marked all ${filteredStudents.length} students PRESENT.`);
+  const handleMarkAllPresentForDate = () => {
+    const marks = attendanceFilteredStudents.map(s => ({
+      studentId: s.id,
+      status: 'PRESENT' as const
+    }));
+    markBatchAttendance(marks, selectedAttendanceDate);
+    showToast(`Marked all ${marks.length} students PRESENT for ${selectedAttendanceDate}.`);
+  };
+
+  const handleMarkAllAbsentForDate = () => {
+    const marks = attendanceFilteredStudents.map(s => ({
+      studentId: s.id,
+      status: 'ABSENT' as const
+    }));
+    markBatchAttendance(marks, selectedAttendanceDate);
+    showToast(`Marked ${marks.length} students ABSENT for ${selectedAttendanceDate}.`);
   };
 
   return (
@@ -216,6 +306,13 @@ function StudentsManagementPageContent() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center gap-2 shadow-xs transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Bulk CSV Import</span>
+            </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="btn-3d-primary px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2"
@@ -247,7 +344,7 @@ function StudentsManagementPageContent() {
               <GraduationCap className="w-4 h-4 text-indigo-600" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-              {students.length}
+              {isDemo ? (students.length > 0 ? students.length.toLocaleString() : '1,248') : students.length.toLocaleString()}
             </div>
             <div className="text-xs font-semibold text-indigo-600 mt-1">
               Active Enrollments
@@ -260,10 +357,10 @@ function StudentsManagementPageContent() {
               <CalendarCheck className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-              {overallAttendanceRate}%
+              {isDemo ? (students.length > 0 ? `${overallAttendanceRate}%` : '96%') : (students.length === 0 ? '0%' : `${overallAttendanceRate}%`)}
             </div>
             <div className="text-xs font-semibold text-emerald-600 mt-1">
-              {presentCount} Present • {absentCount} Absent
+              {isDemo ? (students.length > 0 ? `${presentCount} Present • ${absentCount} Absent` : '1,198 Present • 50 Absent') : `${presentCount} Present • ${absentCount} Absent`}
             </div>
           </div>
 
@@ -273,7 +370,7 @@ function StudentsManagementPageContent() {
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-              {anomalyStudents.length}
+              {isDemo ? (anomalyStudents.length > 0 ? anomalyStudents.length : 14) : anomalyStudents.length}
             </div>
             <div className="text-xs font-semibold text-amber-600 mt-1">
               Students Flagged
@@ -286,7 +383,7 @@ function StudentsManagementPageContent() {
               <CreditCard className="w-4 h-4 text-purple-600" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-              {students.filter(s => s.feeStatus === 'PAID').length} <span className="text-xs font-normal text-slate-400">/ {students.length}</span>
+              {isDemo ? (students.length > 0 ? `${students.filter(s => s.feeStatus === 'PAID').length} / ${students.length}` : '1,148 / 1,248') : `${students.filter(s => s.feeStatus === 'PAID').length} / ${students.length}`}
             </div>
             <div className="text-xs font-semibold text-purple-600 mt-1">
               Fee Paid
@@ -704,143 +801,290 @@ function StudentsManagementPageContent() {
         {/* TAB 2: Daily Attendance Register */}
         {activeTab === 'ATTENDANCE_REGISTER' && (
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <CalendarCheck className="w-5 h-5" />
+            {/* Control Bar: Class, Section, and Date Selection */}
+            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Date Picker */}
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                  <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <label className="text-xs font-bold text-slate-700">Date:</label>
+                  <input
+                    type="date"
+                    value={selectedAttendanceDate}
+                    max={todayDateString}
+                    onChange={(e) => setSelectedAttendanceDate(e.target.value)}
+                    className="bg-transparent text-xs font-bold font-mono text-slate-900 focus:outline-none cursor-pointer"
+                  />
                 </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-emerald-950">
-                    Today&apos;s Daily Attendance Sheet • {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}
-                  </h3>
-                  <p className="text-xs text-emerald-800 font-medium">
-                    1-Click status toggle instantly syncs with Student & Parent portals and teacher logs.
-                  </p>
+
+                {/* Quick Date Chips */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSelectedAttendanceDate(todayDateString)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedAttendanceDate === todayDateString
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedAttendanceDate(yesterdayDateString);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedAttendanceDate === yesterdayDateString
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    Yesterday
+                  </button>
+                </div>
+
+                {/* Class / Grade Selector */}
+                <div className="flex items-center gap-1.5">
+                  <label className="text-xs font-bold text-slate-600">Class:</label>
+                  <select
+                    value={selectedAttendanceGrade}
+                    onChange={(e) => setSelectedAttendanceGrade(e.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="ALL">All Classes</option>
+                    {availableGrades.map((g) => (
+                      <option key={g.id} value={g.name}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Section Selector */}
+                <div className="flex items-center gap-1.5">
+                  <label className="text-xs font-bold text-slate-600">Section:</label>
+                  <select
+                    value={selectedAttendanceSection}
+                    onChange={(e) => setSelectedAttendanceSection(e.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="ALL">All Sections</option>
+                    {availableSections.map((sec) => (
+                      <option key={sec.id} value={sec.name}>
+                        {sec.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
+              {/* Batch Actions */}
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
-                  onClick={handleMarkAllPresent}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5"
+                  onClick={handleMarkAllPresentForDate}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5 shadow-2xs"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Mark All Present</span>
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleMarkAllAbsentForDate}
+                  className="border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs gap-1.5 shadow-2xs"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>Mark All Absent</span>
+                </Button>
               </div>
             </div>
 
+            {/* Actual Saved Data Telemetry Summary Banner */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-slate-50 border border-emerald-200/80 shadow-2xs">
+              <div className="p-2.5 rounded-xl bg-white border border-emerald-100 shadow-2xs">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">
+                  Enrolled Students
+                </span>
+                <span className="text-lg font-black text-slate-900 block mt-0.5">
+                  {currentDayAttendance.totalCount}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">In selected filter</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 block">
+                  Present
+                </span>
+                <span className="text-lg font-black text-emerald-700 block mt-0.5">
+                  {currentDayAttendance.presentCount}
+                </span>
+                <span className="text-[10px] text-emerald-600 font-semibold">On-campus</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-amber-200 shadow-2xs">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 block">
+                  Late Arrivals
+                </span>
+                <span className="text-lg font-black text-amber-700 block mt-0.5">
+                  {currentDayAttendance.lateCount}
+                </span>
+                <span className="text-[10px] text-amber-600 font-semibold">Guardians alerted</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-rose-200 shadow-2xs">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-700 block">
+                  Absent
+                </span>
+                <span className="text-lg font-black text-rose-700 block mt-0.5">
+                  {currentDayAttendance.absentCount}
+                </span>
+                <span className="text-[10px] text-rose-600 font-semibold">Unexcused</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-indigo-200 shadow-2xs col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 block">
+                  Attendance Rate
+                </span>
+                <span className="text-lg font-black text-indigo-700 block mt-0.5">
+                  {currentDayAttendance.attendanceRate}%
+                </span>
+                <span className="text-[10px] text-indigo-600 font-semibold">Calculated from saved marks</span>
+              </div>
+            </div>
+
+            {/* Table of Scoped Students with Dated Status */}
             <Card className="light-glass overflow-hidden shadow-sm">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead>Admission / Roll</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Historical Attendance</TableHead>
-                    <TableHead className="text-center">Today&apos;s Mark</TableHead>
-                    <TableHead className="text-right">Quick Action</TableHead>
+                    <TableHead>Class & Section</TableHead>
+                    <TableHead>Historical Rate</TableHead>
+                    <TableHead className="text-center">Status on {selectedAttendanceDate}</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredStudents.map((s) => {
-                    const currentToday = s.todayAttendance || 'PRESENT';
-                    return (
-                      <TableRow key={s.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2.5">
-                            <img
-                              src={s.photoUrl || `https://images.unsplash.com/photo-1544717305-2782549b5136?w=100&auto=format&fit=crop&q=80`}
-                              alt={s.firstName}
-                              className="w-9 h-9 rounded-full object-cover border border-slate-200"
-                            />
-                            <div>
-                              <div className="font-bold text-slate-900 text-xs">
-                                {s.firstName} {s.lastName}
-                              </div>
-                              <div className="text-[11px] text-slate-500 font-medium">
-                                Guardian: {s.parentName} ({s.parentPhone})
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs font-bold text-slate-800">{s.admissionNumber}</span>
-                          <span className="block text-[11px] font-mono text-slate-500">Roll: {s.rollNumber}</span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-bold text-xs text-slate-800">{s.gradeName}</span>
-                          <span className="block text-[11px] text-slate-500">{s.sectionName}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="w-20 h-2 rounded-full bg-slate-200 overflow-hidden">
-                              <div
-                                className={`h-full ${
-                                  s.attendancePercentage >= 95
-                                    ? 'bg-emerald-600'
-                                    : s.attendancePercentage >= 85
-                                    ? 'bg-amber-500'
-                                    : 'bg-rose-500'
-                                }`}
-                                style={{ width: `${s.attendancePercentage}%` }}
+                  {attendanceFilteredStudents.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-32 text-center text-slate-500 text-xs font-semibold">
+                        No students found matching class &apos;{selectedAttendanceGrade}&apos; and section &apos;{selectedAttendanceSection}&apos; in {activeSchool.name}.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    attendanceFilteredStudents.map((s) => {
+                      const record = currentDayAttendance.records.find(r => r.studentId === s.id);
+                      const currentMark = record ? record.status : (selectedAttendanceDate === todayDateString ? (s.todayAttendance || 'PRESENT') : 'PRESENT');
+
+                      return (
+                        <TableRow key={s.id} className="hover:bg-slate-50/80">
+                          <TableCell>
+                            <div className="flex items-center gap-2.5">
+                              <img
+                                src={s.photoUrl || `https://images.unsplash.com/photo-1544717305-2782549b5136?w=100&auto=format&fit=crop&q=80`}
+                                alt={s.firstName}
+                                className="w-9 h-9 rounded-full object-cover border border-slate-200"
                               />
+                              <div>
+                                <div className="font-bold text-slate-900 text-xs">
+                                  {s.firstName} {s.lastName}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-medium">
+                                  Guardian: {s.parentName} ({s.parentPhone})
+                                </div>
+                              </div>
                             </div>
-                            <span className="text-xs font-bold font-mono text-slate-800">{s.attendancePercentage}%</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="inline-flex items-center rounded-xl bg-slate-100 p-1 gap-1">
-                            <button
-                              onClick={() => handleAttendanceChange(s.id, 'PRESENT')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                                currentToday === 'PRESENT'
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
-                              }`}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-xs font-bold text-slate-800">{s.admissionNumber}</span>
+                            <span className="block text-[11px] font-mono text-slate-500">Roll: {s.rollNumber}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-bold text-xs text-slate-800">{s.gradeName}</span>
+                            <span className="block text-[11px] text-slate-500">{s.sectionName}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="w-20 h-2 rounded-full bg-slate-200 overflow-hidden">
+                                <div
+                                  className={`h-full ${
+                                    s.attendancePercentage >= 95
+                                      ? 'bg-emerald-600'
+                                      : s.attendancePercentage >= 85
+                                      ? 'bg-amber-500'
+                                      : 'bg-rose-500'
+                                  }`}
+                                  style={{ width: `${s.attendancePercentage}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold font-mono text-slate-800">{s.attendancePercentage}%</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="inline-flex items-center rounded-xl bg-slate-100 p-1 gap-1">
+                              <button
+                                onClick={() => handleAttendanceChange(s.id, 'PRESENT')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                  currentMark === 'PRESENT'
+                                    ? 'bg-emerald-600 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Present</span>
+                              </button>
+                              <button
+                                onClick={() => handleAttendanceChange(s.id, 'LATE')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                  currentMark === 'LATE'
+                                    ? 'bg-amber-600 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                <Clock className="w-3 h-3" />
+                                <span>Late</span>
+                              </button>
+                              <button
+                                onClick={() => handleAttendanceChange(s.id, 'ABSENT')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                  currentMark === 'ABSENT'
+                                    ? 'bg-rose-600 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                <XCircle className="w-3 h-3" />
+                                <span>Absent</span>
+                              </button>
+                              <button
+                                onClick={() => handleAttendanceChange(s.id, 'EXCUSED')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                  currentMark === 'EXCUSED'
+                                    ? 'bg-blue-600 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3 h-3" />
+                                <span>Excused</span>
+                              </button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIdCardStudent(s)}
+                              className="text-xs h-7 text-indigo-700 hover:text-indigo-900 font-bold"
                             >
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Present</span>
-                            </button>
-                            <button
-                              onClick={() => handleAttendanceChange(s.id, 'LATE')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                                currentToday === 'LATE'
-                                  ? 'bg-amber-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
-                              }`}
-                            >
-                              <Clock className="w-3 h-3" />
-                              <span>Late</span>
-                            </button>
-                            <button
-                              onClick={() => handleAttendanceChange(s.id, 'ABSENT')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                                currentToday === 'ABSENT'
-                                  ? 'bg-rose-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
-                              }`}
-                            >
-                              <XCircle className="w-3 h-3" />
-                              <span>Absent</span>
-                            </button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIdCardStudent(s)}
-                            className="text-xs h-7 text-indigo-700 hover:text-indigo-900 font-bold"
-                          >
-                            <QrCode className="w-3 h-3 mr-1" />
-                            <span>ID Card</span>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                              <QrCode className="w-3 h-3 mr-1" />
+                              <span>ID Card</span>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </Card>
@@ -950,6 +1194,14 @@ function StudentsManagementPageContent() {
                 </button>
               </div>
 
+              {/* Inline Validation / Error Banner */}
+              {modalError && (
+                <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{modalError}</span>
+                </div>
+              )}
+
               <form onSubmit={handleAddSubmit} className="mt-4 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -982,7 +1234,7 @@ function StudentsManagementPageContent() {
                       onChange={(e) => setFormData({ ...formData, gradeId: e.target.value })}
                       className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
                     >
-                      {initialGrades.map((g) => (
+                      {availableGrades.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.name}
                         </option>
@@ -996,7 +1248,7 @@ function StudentsManagementPageContent() {
                       onChange={(e) => setFormData({ ...formData, sectionId: e.target.value })}
                       className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
                     >
-                      {initialSections.map((sec) => (
+                      {availableSections.map((sec) => (
                         <option key={sec.id} value={sec.id}>
                           {sec.name}
                         </option>
@@ -1007,11 +1259,24 @@ function StudentsManagementPageContent() {
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-slate-700">Admission No</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700">Admission No *</label>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, admissionNumber: generateNextAdmissionNumber() })}
+                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
+                        title="Auto-generate next sequential admission number"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        <span>Auto</span>
+                      </button>
+                    </div>
                     <Input
-                      disabled
+                      required
                       value={formData.admissionNumber}
-                      className="mt-1 bg-slate-100 border-slate-300 text-xs font-mono font-bold text-slate-600"
+                      onChange={(e) => setFormData({ ...formData, admissionNumber: e.target.value })}
+                      placeholder="e.g. ADM-2026-0105"
+                      className="mt-1 bg-white border-slate-300 text-xs font-mono font-bold text-slate-900"
                     />
                   </div>
                   <div>
@@ -1226,6 +1491,13 @@ function StudentsManagementPageContent() {
             </div>
           </div>
         )}
+
+        {/* Bulk Student CSV / Excel Import Modal */}
+        <BulkStudentImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={(count) => showToast(`Successfully admitted ${count} students via bulk CSV import!`)}
+        />
       </div>
     </AppShell>
   );

@@ -9,7 +9,12 @@ import { useRouter } from 'next/navigation';
 export function RoleSwitcher() {
   const { role, setRole } = useAuth();
   const [isOpen, setIsOpen] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
   const router = useRouter();
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const roleConfigs: Record<UserRole, { label: string; icon: React.ReactNode; color: string; path: string }> = {
     SUPER_ADMIN: {
@@ -57,7 +62,8 @@ export function RoleSwitcher() {
     router.push(targetPath);
   };
 
-  const currentConfig = roleConfigs[role];
+  const effectiveRole = mounted ? role : 'SCHOOL_ADMIN';
+  const currentConfig = roleConfigs[effectiveRole] || roleConfigs.SCHOOL_ADMIN;
 
   return (
     <div className="relative">

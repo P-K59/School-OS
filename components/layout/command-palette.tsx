@@ -131,7 +131,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         { title: 'Course Dynamic Pricing Engine', category: 'HQ Navigation', icon: CreditCard, href: '/admin/pricing', hint: 'Regional tiers, subsidies & school overrides' },
         { title: 'InnovatMind STEM Trainers', category: 'HQ Navigation', icon: Users, href: '/admin/trainers', hint: 'Trainer allocation & workload optimizer' },
         { title: 'Global Course Catalog', category: 'HQ Navigation', icon: BookOpen, href: '/admin/courses', hint: 'Publish & price STEM, AI, Coding & Robotics courses' },
-        { title: 'Platform Master Settings', category: 'HQ Navigation', icon: Settings, href: '/admin#settings', hint: 'OS system configurations & master audit' },
+        { title: 'Platform Master Settings', category: 'HQ Navigation', icon: Settings, href: '/admin/settings', hint: 'OS system configurations & master audit' },
 
         // Quick Actions
         { title: 'Provision New School Partner', category: 'Quick Action', icon: PlusCircle, href: '/admin/schools/new', hint: 'Register school and generate principal password' },

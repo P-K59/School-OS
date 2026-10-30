@@ -28,11 +28,15 @@ export type SchoolOnboardingStage =
   | 'DEMO_SCHEDULED' 
   | 'CONTRACT_STAGE' 
   | 'ONBOARDING' 
+  | 'PENDING_APPROVAL'
+  | 'UNDER_REVIEW'
   | 'ACTIVE' 
-  | 'SUSPENDED';
+  | 'SUSPENDED'
+  | 'REJECTED';
 
 export interface School {
   id: string;
+  registrationId?: string; // Stable unique identifier e.g. IMS-2026-000101
   code: string;
   name: string;
   schoolType: SchoolType;
@@ -46,13 +50,21 @@ export interface School {
   region?: string;
   logoUrl?: string;
   slogan?: string;
+  tagline?: string;
+  portalTitle?: string;
+  subdomain?: string;
+  customDomain?: string;
   brandThemeColor?: string;
+  brandAccentColor?: string;
   boardAffiliation?: string;
   logoCrest?: string;
+  faviconUrl?: string;
+  signatureUrl?: string;
   websiteUrl?: string;
   principalName?: string;
   establishedYear?: number | string;
   isActive: boolean;
+  isDemo?: boolean;
   totalStudents: number;
   totalStaff: number;
   enrolledCoursesCount: number;
@@ -61,10 +73,24 @@ export interface School {
   contactPersonPhone?: string;
   contactPersonEmail?: string;
   onboardingStatus?: SchoolOnboardingStage;
+  approvalDetails?: {
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    submittedAt?: string;
+    reviewedAt?: string;
+    reviewedBy?: string;
+    decisionNotes?: string;
+  };
+  suspensionDetails?: {
+    isSuspended: boolean;
+    reason?: string;
+    suspendedAt?: string;
+    suspendedBy?: string;
+  };
   academicSession?: string;
   contractStartDate?: string;
   contractEndDate?: string;
   notes?: string;
+  enabledModules?: SchoolModulesConfig;
   adminCredentials?: {
     loginId: string;
     email: string;
@@ -72,6 +98,47 @@ export interface School {
     generatedAt: string;
     provisionedBy: string;
   };
+  welcomeKitDispatchedAt?: string;
+  welcomeKitDispatchedBy?: string;
+}
+
+export interface SchoolModulesConfig {
+  admission?: boolean;
+  students?: boolean;
+  parents?: boolean;
+  staff?: boolean;
+  attendance?: boolean;
+  fees?: boolean;
+  academics?: boolean;
+  timetable?: boolean;
+  exams?: boolean;
+  courses?: boolean;
+  notices?: boolean;
+  transport?: boolean;
+  resources?: boolean;
+  utilities?: boolean;
+}
+
+export type NoticePriority = 'URGENT' | 'HOLIDAY' | 'ACADEMIC' | 'GENERAL' | 'FEES';
+export type NoticeTargetAudience = 'ALL' | 'STUDENTS' | 'PARENTS' | 'STAFF';
+
+export interface NoticeBroadcast {
+  id: string;
+  schoolId: string;
+  title: string;
+  messageContent: string;
+  priority: NoticePriority;
+  targetAudience: NoticeTargetAudience;
+  channels: ('PORTAL' | 'WHATSAPP' | 'SMS' | 'PUSH' | 'EMAIL')[];
+  isEmergencyBanner?: boolean;
+  sentAt: string;
+  expiresAt?: string;
+  authorName?: string;
+  deliveredCount: number;
+  totalRecipients: number;
+  openRate: number;
+  readByUsers?: string[];
+  status: 'PUBLISHED' | 'DRAFT' | 'ARCHIVED';
 }
 
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'PENDING' | 'INACTIVE';
@@ -84,6 +151,7 @@ export interface StudentCredentials {
   status: ProvisioningStatus;
   lastLoginAt?: string;
   reissuedAt?: string;
+  credentialsIssued?: boolean;
 }
 
 export interface UserProfile {
@@ -243,6 +311,100 @@ export interface FeeInvoice {
   paidAmount: number;
   dueDate: string;
   status: PaymentStatus;
+  createdAt?: string;
+  lastReminderSentAt?: string;
+  lastReminderChannel?: 'WHATSAPP' | 'SMS' | 'EMAIL';
+  waiverReason?: string;
+  waiverApprovedBy?: string;
+  paymentHistory?: Array<{
+    receiptNumber: string;
+    amount: number;
+    paymentMode: 'UPI' | 'NET_BANKING' | 'CASH' | 'CHEQUE';
+    transactionRef?: string;
+    paidAt: string;
+  }>;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  date: string; // YYYY-MM-DD
+  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
+  remarks?: string;
+  markedAt: string;
+  markedBy?: string;
+}
+
+export interface PaymentReceipt {
+  receiptNumber: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  schoolId: string;
+  schoolName: string;
+  studentId: string;
+  studentName: string;
+  admissionNumber?: string;
+  gradeName?: string;
+  sectionName?: string;
+  category: string;
+  amountPaid: number;
+  paymentMode: 'UPI' | 'NET_BANKING' | 'CASH' | 'CHEQUE';
+  transactionRef?: string;
+  bankName?: string;
+  chequeNumber?: string;
+  notes?: string;
+  waiverReason?: string;
+  totalAmount: number;
+  discountAmount: number;
+  previousPaidAmount: number;
+  remainingBalance: number;
+  status: PaymentStatus;
+  paidAt: string;
+  authorizedSignatory: string;
+}
+
+export interface InstitutionalFeeStructure {
+  id: string;
+  schoolId: string;
+  gradeName: string;
+  academicSession: string;
+  tuitionFee: number;
+  stemLabFee: number;
+  examLibraryFee: number;
+  annualCharges: number;
+  totalAnnualFee: number;
+}
+
+export interface TeacherPermissionConfig {
+  markAttendance?: boolean;
+  canTakeAttendance?: boolean;
+  enterExamMarks?: boolean;
+  canGradeExams?: boolean;
+  lecturePlanning?: boolean;
+  canManageCurriculum?: boolean;
+  manageAssignments?: boolean;
+  canManageAssignments?: boolean;
+  approveLeaves?: boolean;
+  canApproveLeaves?: boolean;
+}
+
+export interface TeacherTask {
+  id: string;
+  schoolId: string;
+  teacherId: string;
+  teacherName: string;
+  teacherEmail?: string;
+  title: string;
+  description?: string;
+  assignedGrade?: string;
+  assignedSubject?: string;
+  subject?: string;
+  dueDate: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  assignedAt: string;
+  assignedBy?: string;
 }
 
 export interface StaffMember {
@@ -259,6 +421,14 @@ export interface StaffMember {
   allowances: number;
   attendanceRate: number;
   status: 'ACTIVE' | 'ON_LEAVE' | 'RESIGNED';
+  assignedGrades?: string[];
+  assignedSubjects?: string[];
+  permissions?: TeacherPermissionConfig;
+  credentials?: {
+    loginId: string;
+    temporaryPassword?: string;
+    generatedAt: string;
+  };
 }
 
 export interface PayrollRecord {
@@ -351,6 +521,10 @@ export interface AuditEvent {
   detail: string;
   time: string;
   category: 'FEE' | 'STEM' | 'ADMISSION' | 'FACILITY' | 'AUTH' | 'TEACHER';
+  isRevokable?: boolean;
+  targetEntityId?: string;
+  targetEntityType?: 'SCHOOL' | 'TRAINER';
+  deletedSnapshot?: any;
 }
 
 // Exam Cell & Assessment Types

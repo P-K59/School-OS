@@ -54,6 +54,11 @@ import {
 } from 'lucide-react';
 
 export default function StudentPortalPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <Suspense fallback={
       <div className="min-h-[500px] flex items-center justify-center p-8 text-slate-500 font-bold">
@@ -63,7 +68,16 @@ export default function StudentPortalPage() {
         </div>
       </div>
     }>
-      <GamifiedStudentPortal />
+      {!mounted ? (
+        <div className="min-h-[500px] flex items-center justify-center p-8 text-slate-500 font-bold">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <span>Entering Cadet Learning World...</span>
+          </div>
+        </div>
+      ) : (
+        <GamifiedStudentPortal />
+      )}
     </Suspense>
   );
 }
@@ -71,16 +85,28 @@ export default function StudentPortalPage() {
 function GamifiedStudentPortal() {
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'home';
-  const { currentUser, role } = useAuth();
+  const { currentUser, role, dataMode } = useAuth();
+
+  const isActualStudent = Boolean(
+    dataMode === 'PRODUCTION' &&
+    currentUser &&
+    currentUser.schoolId &&
+    currentUser.schoolId !== 'sch-del-001' &&
+    currentUser.schoolId !== 'school-1' &&
+    currentUser.schoolId !== 'school-2' &&
+    currentUser.schoolId !== 'school-3' &&
+    currentUser.id !== 'stud-1' &&
+    currentUser.id !== 'usr-student-1'
+  );
 
   // Gamification state with localStorage persistence
-  const [studentXp, setStudentXp] = useState<number>(1820);
-  const [studentCoins, setStudentCoins] = useState<number>(450);
-  const [studentStreak, setStudentStreak] = useState<number>(12);
-  const [studentLevel, setStudentLevel] = useState<number>(12);
+  const [studentXp, setStudentXp] = useState<number>(isActualStudent ? ((currentUser as any)?.currentXp || 0) : 1820);
+  const [studentCoins, setStudentCoins] = useState<number>(isActualStudent ? 0 : 450);
+  const [studentStreak, setStudentStreak] = useState<number>(isActualStudent ? 0 : 12);
+  const [studentLevel, setStudentLevel] = useState<number>(isActualStudent ? 1 : 12);
 
   // Quest states
-  const [completedQuests, setCompletedQuests] = useState<string[]>(['quest-1']);
+  const [completedQuests, setCompletedQuests] = useState<string[]>(isActualStudent ? [] : ['quest-1']);
   const [activeLeaderboardTab, setActiveLeaderboardTab] = useState<'CLASS' | 'SCHOOL'>('CLASS');
 
   // Interactive Modals
@@ -127,7 +153,7 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
   const [isSubmitProjectOpen, setIsSubmitProjectOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
-  const [userProjects, setUserProjects] = useState([
+  const [userProjects, setUserProjects] = useState(isActualStudent ? [] : [
     {
       id: 'proj-1',
       title: 'Smart Solar Street Light with LDR & Arduino',
@@ -155,34 +181,66 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
   // Load persisted gamification state
   useEffect(() => {
     try {
-      const savedXp = localStorage.getItem('student_xp');
-      const savedCoins = localStorage.getItem('student_coins');
-      const savedQuests = localStorage.getItem('student_quests');
+      if (isActualStudent) {
+        const studentId = currentUser?.id || (currentUser as any)?.studentId || 'actual';
+        const savedXp = localStorage.getItem(`student_xp_${studentId}`);
+        const savedCoins = localStorage.getItem(`student_coins_${studentId}`);
+        const savedQuests = localStorage.getItem(`student_quests_${studentId}`);
 
-      if (savedXp) setStudentXp(Number(savedXp));
-      if (savedCoins) setStudentCoins(Number(savedCoins));
-      if (savedQuests) setCompletedQuests(JSON.parse(savedQuests));
+        if (savedXp) {
+          const num = Number(savedXp);
+          setStudentXp(num);
+          setStudentLevel(Math.max(1, Math.floor(num / 200) + 1));
+        } else {
+          const initXp = (currentUser as any)?.currentXp || 0;
+          setStudentXp(initXp);
+          setStudentLevel(Math.max(1, Math.floor(initXp / 200) + 1));
+        }
+        if (savedCoins) setStudentCoins(Number(savedCoins));
+        else setStudentCoins(0);
+
+        if (savedQuests) setCompletedQuests(JSON.parse(savedQuests));
+        else setCompletedQuests([]);
+
+        setUserProjects([]);
+      } else {
+        const savedXp = localStorage.getItem('student_xp');
+        const savedCoins = localStorage.getItem('student_coins');
+        const savedQuests = localStorage.getItem('student_quests');
+
+        setStudentXp(savedXp ? Number(savedXp) : 1820);
+        setStudentCoins(savedCoins ? Number(savedCoins) : 450);
+        setStudentStreak(12);
+        setStudentLevel(12);
+        setCompletedQuests(savedQuests ? JSON.parse(savedQuests) : ['quest-1']);
+      }
     } catch {}
-  }, []);
+  }, [currentUser?.id, isActualStudent]);
 
   // Award rewards idempotently
   const handleAwardReward = (xpToAdd: number, coinsToAdd: number, reason: string) => {
+    const studentId = currentUser?.id || (currentUser as any)?.studentId || 'actual';
+    const xpKey = isActualStudent ? `student_xp_${studentId}` : 'student_xp';
+    const coinsKey = isActualStudent ? `student_coins_${studentId}` : 'student_coins';
+    const questsKey = isActualStudent ? `student_quests_${studentId}` : 'student_quests';
+
     setStudentXp(prev => {
       const nextXp = prev + xpToAdd;
-      try { localStorage.setItem('student_xp', String(nextXp)); } catch {}
+      try { localStorage.setItem(xpKey, String(nextXp)); } catch {}
+      setStudentLevel(Math.max(1, Math.floor(nextXp / 200) + 1));
       return nextXp;
     });
 
     setStudentCoins(prev => {
       const nextCoins = prev + coinsToAdd;
-      try { localStorage.setItem('student_coins', String(nextCoins)); } catch {}
+      try { localStorage.setItem(coinsKey, String(nextCoins)); } catch {}
       return nextCoins;
     });
 
     // Mark quest done
     setCompletedQuests(prev => {
       const updated = Array.from(new Set([...prev, 'quest-2']));
-      try { localStorage.setItem('student_quests', JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(questsKey, JSON.stringify(updated)); } catch {}
       return updated;
     });
 
@@ -244,11 +302,11 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
         {/* =========================================================================
             TOP WELCOME & GAMIFICATION HEADER BAR
            ========================================================================= */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white/80 backdrop-blur-md p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xs">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white/80 backdrop-blur-md p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xs min-w-0">
           
           {/* Left: Avatar & Greeting */}
-          <div className="flex items-center gap-3.5">
-            <div className="relative">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative shrink-0">
               <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 p-0.5 shadow-md">
                 <div className="w-full h-full rounded-2xl bg-slate-900 overflow-hidden flex items-center justify-center text-white text-2xl font-black">
                   👦
@@ -259,23 +317,23 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
               </span>
             </div>
 
-            <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 truncate">
                 <span>Hi {studentDisplayName}!</span>
-                <span className="animate-wave inline-block origin-bottom-right">👋</span>
+                <span className="animate-wave inline-block origin-bottom-right shrink-0">👋</span>
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium">
+              <p className="text-xs sm:text-sm text-slate-500 font-medium truncate">
                 Ready for a new adventure today?
               </p>
             </div>
           </div>
 
           {/* Right: Gamification Badges (Level, Coins, Streak) */}
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
             
             {/* Level Card */}
-            <div className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200/80 shadow-xs flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-base shadow-xs">
+            <div className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200/80 shadow-xs flex items-center gap-2.5 sm:gap-3 shrink-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-sm sm:text-base shadow-xs shrink-0">
                 👑
               </div>
               <div className="flex flex-col">
@@ -288,7 +346,7 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
                   </span>
                 </div>
                 {/* XP Progress Bar */}
-                <div className="w-28 sm:w-36 h-2 bg-amber-200/60 rounded-full overflow-hidden mt-1">
+                <div className="w-24 sm:w-36 h-2 bg-amber-200/60 rounded-full overflow-hidden mt-1">
                   <div
                     className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full transition-all duration-1000 shadow-xs"
                     style={{ width: `${xpProgressPercent}%` }}
@@ -298,8 +356,8 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
             </div>
 
             {/* Coins Card */}
-            <div className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black shadow-xs flex items-center gap-2 border border-amber-300">
-              <span className="text-lg">🪙</span>
+            <div className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black shadow-xs flex items-center gap-2 border border-amber-300 shrink-0">
+              <span className="text-base sm:text-lg">🪙</span>
               <div className="flex flex-col leading-tight">
                 <span className="text-xs font-black">{studentCoins}</span>
                 <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-900/80">Coins</span>
@@ -307,8 +365,8 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
             </div>
 
             {/* Streak Card */}
-            <div className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-orange-500 text-white font-black shadow-xs flex items-center gap-2 border border-rose-400">
-              <span className="text-lg animate-pulse">🔥</span>
+            <div className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-orange-500 text-white font-black shadow-xs flex items-center gap-2 border border-rose-400 shrink-0">
+              <span className="text-base sm:text-lg animate-pulse">🔥</span>
               <div className="flex flex-col leading-tight">
                 <span className="text-xs font-black">{studentStreak}</span>
                 <span className="text-[9px] font-extrabold uppercase tracking-wider text-rose-100">Day Streak</span>
@@ -327,7 +385,7 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
           <div className="space-y-6">
             
             {/* 3D Floating Islands Map */}
-            <div className="relative rounded-3xl overflow-hidden border-2 border-indigo-200/80 shadow-2xl bg-slate-950">
+            <div className="relative rounded-3xl overflow-hidden border-2 border-indigo-200/80 shadow-2xl bg-slate-950 w-full max-w-full">
               <div className="relative w-full h-[360px] sm:h-[420px] lg:h-[480px]">
                 <img
                   src="/images/learning-world-map.jpg"
@@ -350,7 +408,7 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
                 </div>
 
                 {/* Top-Right Mission Goal Card */}
-                <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 w-64 sm:w-72 pointer-events-auto">
+                <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 w-60 sm:w-72 max-w-[calc(100%-2rem)] pointer-events-auto">
                   <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-br from-indigo-950/90 via-slate-900/90 to-purple-950/90 border border-indigo-400/50 shadow-2xl text-white backdrop-blur-md space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -461,7 +519,7 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
             </div>
 
             {/* Quick Action Cards Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <div className="p-4 rounded-3xl bg-white border border-slate-200/90 shadow-xs hover:border-emerald-300 hover:shadow-lg transition-all flex flex-col justify-between">
                 <div className="flex items-center gap-3 mb-3">
                   <button
@@ -1457,15 +1515,32 @@ print("Ready for command sequence...")`
 
             {/* Projects List */}
             <div className="space-y-4">
-              {userProjects.map((proj) => (
-                <div key={proj.id} className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1.5 max-w-xl">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${proj.status === 'GRADED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                        {proj.status === 'GRADED' ? `Graded: ${proj.grade}` : 'Under Review'}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-mono">• Submitted {proj.date}</span>
-                    </div>
+              {userProjects.length === 0 ? (
+                <div className="p-8 rounded-3xl bg-white border border-slate-200/90 shadow-xs text-center space-y-3">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto text-3xl">
+                    🚀
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">No Projects Submitted Yet</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    You haven&apos;t submitted any STEM capstone projects yet. Complete lesson modules and build your first robotics or coding project to submit for review and earn XP!
+                  </p>
+                  <button
+                    onClick={() => setIsSubmitProjectOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm cursor-pointer"
+                  >
+                    + Submit First Project
+                  </button>
+                </div>
+              ) : (
+                userProjects.map((proj) => (
+                  <div key={proj.id} className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1.5 max-w-xl">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${proj.status === 'GRADED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {proj.status === 'GRADED' ? `Graded: ${proj.grade}` : 'Under Review'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono">• Submitted {proj.date}</span>
+                      </div>
                     <h3 className="text-base font-black text-slate-900">{proj.title}</h3>
                     <p className="text-xs text-slate-500 font-medium">{proj.course}</p>
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 text-xs text-slate-700 mt-2">
@@ -1486,7 +1561,7 @@ print("Ready for command sequence...")`
                     </button>
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </div>
         )}
@@ -1507,7 +1582,7 @@ print("Ready for command sequence...")`
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {[
                 { title: 'First Code Run', desc: 'Executed your first script in Python.', icon: '⚡', unlocked: true },
                 { title: 'Robo Architect', desc: 'Wired an Arduino with ultrasonic sensor.', icon: '🤖', unlocked: true },

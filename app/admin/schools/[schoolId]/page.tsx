@@ -35,8 +35,11 @@ import {
   Activity,
   DollarSign,
   BarChart3,
-  Layers
+  Layers,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
+import { WelcomeKitModal } from '@/components/admin/welcome-kit-modal';
 
 type SchoolTab = 
   | 'overview' 
@@ -68,77 +71,95 @@ export default function SchoolDetailsPage() {
     financials,
     activities,
     updateSchool,
-    recordAuditEvent
+    recordAuditEvent,
+    deleteSchool,
+    toggleSchoolSuspension
   } = useAuth();
 
   // Active tab state
   const initialTab = (searchParams.get('tab') as SchoolTab) || 'overview';
   const [activeTab, setActiveTab] = useState<SchoolTab>(initialTab);
 
-  // Find school by ID or fallback
+  // Find school by ID, code, or registrationId
   const school = useMemo(() => {
-    return schools.find(s => s.id === schoolId) || schools[0];
+    return schools.find(s => s.id === schoolId || s.code === schoolId || s.registrationId === schoolId) || null;
   }, [schools, schoolId]);
 
   // Edit School Profile Modal
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({
-    name: school.name,
-    email: school.email,
-    phone: school.phone,
-    principalName: school.principalName || '',
-    contactPersonName: school.contactPersonName || '',
-    contactPersonPhone: school.contactPersonPhone || '',
-    contactPersonEmail: school.contactPersonEmail || '',
-    city: school.city,
-    state: school.state,
-    address: school.address,
-    postalCode: school.postalCode,
-    totalStudents: school.totalStudents,
-    totalStaff: school.totalStaff,
-    contractStartDate: school.contractStartDate || '',
-    contractEndDate: school.contractEndDate || '',
-    notes: school.notes || '',
+    name: school?.name || '',
+    email: school?.email || '',
+    phone: school?.phone || '',
+    principalName: school?.principalName || '',
+    contactPersonName: school?.contactPersonName || '',
+    contactPersonPhone: school?.contactPersonPhone || '',
+    contactPersonEmail: school?.contactPersonEmail || '',
+    city: school?.city || '',
+    state: school?.state || '',
+    address: school?.address || '',
+    postalCode: school?.postalCode || '',
+    totalStudents: school?.totalStudents || 0,
+    totalStaff: school?.totalStaff || 0,
+    contractStartDate: school?.contractStartDate || '',
+    contractEndDate: school?.contractEndDate || '',
+    notes: school?.notes || '',
   });
+
+  // Delete School State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteCodeInput, setDeleteCodeInput] = useState('');
+  const [deleteCascadeConfirmed, setDeleteCascadeConfirmed] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Welcome Kit Modal State
+  const [isWelcomeKitOpen, setIsWelcomeKitOpen] = useState(false);
+
+  // Suspension Modal State
+  const [isSuspensionModalOpen, setIsSuspensionModalOpen] = useState(false);
+  const [suspensionReasonInput, setSuspensionReasonInput] = useState('');
+  const [isProcessingSuspension, setIsProcessingSuspension] = useState(false);
 
   // School-specific course assignments
   const schoolAssignments = useMemo(() => {
-    return schoolCourseAssignments.filter(a => a.schoolId === school.id);
-  }, [schoolCourseAssignments, school.id]);
+    return schoolCourseAssignments.filter(a => a.schoolId === school?.id);
+  }, [schoolCourseAssignments, school?.id]);
 
   // School-specific pricing overrides
   const schoolOverrides = useMemo(() => {
-    return schoolPricingOverrides.filter(o => o.schoolId === school.id);
-  }, [schoolPricingOverrides, school.id]);
+    return schoolPricingOverrides.filter(o => o.schoolId === school?.id);
+  }, [schoolPricingOverrides, school?.id]);
 
   // School-specific trainer allocations
   const schoolAllocations = useMemo(() => {
-    return trainerAllocations.filter(a => a.schoolId === school.id);
-  }, [trainerAllocations, school.id]);
+    return trainerAllocations.filter(a => a.schoolId === school?.id);
+  }, [trainerAllocations, school?.id]);
 
   // School audit activities
   const schoolActivities = useMemo(() => {
-    return activities.filter(a => a.schoolId === school.id);
-  }, [activities, school.id]);
+    return activities.filter(a => a.schoolId === school?.id);
+  }, [activities, school?.id]);
 
   // School students & staff
   const schoolStudents = useMemo(() => {
-    return students.filter(s => s.schoolId === school.id);
-  }, [students, school.id]);
+    return students.filter(s => s.schoolId === school?.id);
+  }, [students, school?.id]);
 
   const schoolStaffMembers = useMemo(() => {
-    return staff.filter(s => s.schoolId === school.id);
-  }, [staff, school.id]);
+    return staff.filter(s => s.schoolId === school?.id);
+  }, [staff, school?.id]);
 
   // Estimated contract value calculation
   const estimatedContractValue = useMemo(() => {
     return schoolAssignments.reduce((acc, curr) => {
-      return acc + (curr.appliedPricePerUnit * (curr.capacity || school.totalStudents));
+      return acc + (curr.appliedPricePerUnit * (curr.capacity || school?.totalStudents || 0));
     }, 0);
-  }, [schoolAssignments, school.totalStudents]);
+  }, [schoolAssignments, school?.totalStudents]);
 
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!school) return;
     updateSchool(school.id, {
       name: editForm.name,
       email: editForm.email,
@@ -171,6 +192,27 @@ export default function SchoolDetailsPage() {
     { id: 'reports', label: 'Reports' },
     { id: 'activity', label: 'Activity Logs', count: schoolActivities.length },
   ];
+
+  if (!school) {
+    return (
+      <AppShell>
+        <div className="max-w-2xl mx-auto py-16 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+            <Building2 className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">School Tenant Not Found</h2>
+          <p className="text-sm text-slate-500">
+            No active or registered institution was found matching identifier &quot;{schoolId}&quot;.
+          </p>
+          <Link href="/admin/schools">
+            <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-10 px-5 rounded-xl cursor-pointer">
+              Return to School Registry
+            </Button>
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -280,6 +322,48 @@ export default function SchoolDetailsPage() {
                   Assign Course
                 </Button>
               </Link>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsWelcomeKitOpen(true)}
+                className="bg-indigo-950/40 border-indigo-800/80 hover:bg-indigo-900/60 text-indigo-300 hover:text-white text-xs font-semibold gap-1.5 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Welcome Kit
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsSuspensionModalOpen(true);
+                  setSuspensionReasonInput(school.suspensionDetails?.reason || '');
+                }}
+                className={`text-xs font-semibold gap-1.5 cursor-pointer ${
+                  school.isActive
+                    ? 'bg-amber-950/40 border-amber-800/80 hover:bg-amber-900/60 text-amber-300 hover:text-white'
+                    : 'bg-emerald-950/40 border-emerald-800/80 hover:bg-emerald-900/60 text-emerald-300 hover:text-white'
+                }`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                {school.isActive ? 'Suspend Access' : 'Reactivate Access'}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsDeleteModalOpen(true);
+                  setDeleteCodeInput('');
+                  setDeleteCascadeConfirmed(false);
+                  setDeleteError(null);
+                }}
+                className="bg-rose-950/40 border-rose-800/80 hover:bg-rose-900/60 text-rose-300 hover:text-white text-xs font-semibold gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete School
+              </Button>
             </div>
           </div>
 
@@ -312,6 +396,38 @@ export default function SchoolDetailsPage() {
             </div>
           </div>
         </Card>
+
+        {/* School Suspension Alert Banner */}
+        {(!school.isActive || school.suspensionDetails?.isSuspended) && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-bold text-amber-950 flex items-center gap-2">
+                  <span>School Portal Access is Currently Suspended</span>
+                  <span className="text-[10px] font-normal text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                    {school.suspensionDetails?.suspendedAt ? `Since ${new Date(school.suspensionDetails.suspendedAt).toLocaleDateString()}` : 'Suspended'}
+                  </span>
+                </div>
+                <p className="text-amber-800">
+                  School administrators and students under this institution cannot log in. All academic and fee data is safely preserved.
+                  {school.suspensionDetails?.reason && (
+                    <span className="block font-semibold mt-0.5">&ldquo;Reason: {school.suspensionDetails.reason}&rdquo;</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={async () => {
+                await toggleSchoolSuspension(school.id, false);
+              }}
+              className="bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs h-8 px-4 rounded-xl shrink-0 cursor-pointer shadow-xs"
+            >
+              Lift Suspension
+            </Button>
+          </div>
+        )}
 
         {/* 9 Navigable Tabs */}
         <div className="border-b border-slate-200 bg-white rounded-t-2xl px-2 pt-2 shadow-sm overflow-x-auto scrollbar-none">
@@ -873,6 +989,215 @@ export default function SchoolDetailsPage() {
             </Card>
           </div>
         )}
+        {/* Delete School Confirmation Modal */}
+        {isDeleteModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <Card className="max-w-lg w-full bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border-rose-200 space-y-5 animate-in fade-in zoom-in-95 text-slate-900">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Delete School Tenant</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Irreversible removal of institutional records and operational data
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+                <div className="flex justify-between items-center py-0.5">
+                  <span className="text-slate-500 font-semibold">School Name:</span>
+                  <span className="font-bold text-slate-900">{school.name}</span>
+                </div>
+                <div className="flex justify-between items-center py-0.5">
+                  <span className="text-slate-500 font-semibold">Registration ID / Code:</span>
+                  <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    {school.registrationId || school.code}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-0.5">
+                  <span className="text-slate-500 font-semibold">Location:</span>
+                  <span className="font-medium text-slate-700">{school.city}, {school.state}</span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-rose-50/80 border border-rose-200 text-xs text-rose-900 space-y-1.5">
+                <span className="font-bold block">Scope of Deletion:</span>
+                <p>
+                  Deleting this tenant permanently purges all school-specific students, fee invoices, payments, attendance records, course enrollments, and teacher assignments.
+                </p>
+                <p className="font-semibold text-rose-800">
+                  ✓ The Super Admin account and shared course catalog will NOT be deleted.
+                </p>
+              </div>
+
+              {deleteError && (
+                <div className="p-3 rounded-xl bg-rose-100 text-rose-800 text-xs font-semibold">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="space-y-3 pt-1">
+                <label className="flex items-start gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={deleteCascadeConfirmed}
+                    onChange={(e) => setDeleteCascadeConfirmed(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                  />
+                  <span>
+                    I confirm that I want to delete this school and all its dependent operational records permanently.
+                  </span>
+                </label>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-600 block">
+                    Type <strong className="font-mono text-rose-600">{school.code}</strong> or <strong className="font-mono text-rose-600">DELETE</strong> to confirm:
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder={`Type ${school.code}`}
+                    value={deleteCodeInput}
+                    onChange={(e) => setDeleteCodeInput(e.target.value)}
+                    className="text-xs font-mono h-9 bg-slate-50 border-slate-200 focus:bg-white text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={isDeleting}
+                  className="text-xs text-slate-600 border-slate-200 h-9"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={
+                    !deleteCascadeConfirmed ||
+                    (deleteCodeInput.trim().toUpperCase() !== school.code.toUpperCase() &&
+                     deleteCodeInput.trim().toUpperCase() !== 'DELETE') ||
+                    isDeleting
+                  }
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    setDeleteError(null);
+                    const res = await deleteSchool(school.id);
+                    setIsDeleting(false);
+                    if (res.success) {
+                      setIsDeleteModalOpen(false);
+                      router.push('/admin/schools');
+                    } else {
+                      setDeleteError(res.error || 'Failed to delete school tenant. Please try again.');
+                    }
+                  }}
+                  className="text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white h-9 px-4 rounded-xl shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting Records...' : 'Permanently Delete School'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Suspension Modal */}
+        {isSuspensionModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <Card className="max-w-md w-full bg-white rounded-3xl p-6 shadow-2xl border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold ${
+                  school.isActive ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                }`}>
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    {school.isActive ? 'Suspend School Access' : 'Reactivate School Access'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">{school.name} ({school.code})</p>
+                </div>
+              </div>
+
+              {school.isActive ? (
+                <>
+                  <p className="text-xs text-slate-600 font-medium">
+                    Temporarily freeze portal access for this school. All administrators and students will be prevented from logging in. <strong className="text-slate-900">All student, course, and fee records remain completely preserved.</strong>
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Reason for Suspension</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Annual subscription fee overdue, administrative compliance audit..."
+                      value={suspensionReasonInput}
+                      onChange={(e) => setSuspensionReasonInput(e.target.value)}
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-medium text-slate-900"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 font-medium">
+                  <div className="font-bold flex items-center gap-1.5 text-emerald-950">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Restore Active Operations</span>
+                  </div>
+                  <p>
+                    Lifting suspension will immediately allow school administrators and students to log in and access their portals.
+                  </p>
+                  {school.suspensionDetails?.reason && (
+                    <div className="text-[11px] text-emerald-700 mt-1 pt-1 border-t border-emerald-200/60">
+                      Previous suspension reason: &ldquo;{school.suspensionDetails.reason}&rdquo;
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsSuspensionModalOpen(false)}
+                  className="text-xs text-slate-600 border-slate-200 h-9"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={isProcessingSuspension}
+                  onClick={async () => {
+                    setIsProcessingSuspension(true);
+                    try {
+                      await toggleSchoolSuspension(
+                        school.id,
+                        school.isActive,
+                        suspensionReasonInput
+                      );
+                      setIsSuspensionModalOpen(false);
+                    } finally {
+                      setIsProcessingSuspension(false);
+                    }
+                  }}
+                  className={`text-xs font-extrabold h-9 px-4 rounded-xl shadow-sm text-white cursor-pointer ${
+                    school.isActive ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  {school.isActive ? 'Confirm Suspension' : 'Confirm Reactivation'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Onboarding Welcome Kit & Credential Dispatcher Modal */}
+        <WelcomeKitModal
+          school={school}
+          isOpen={isWelcomeKitOpen}
+          onClose={() => setIsWelcomeKitOpen(false)}
+        />
       </div>
     </AppShell>
   );

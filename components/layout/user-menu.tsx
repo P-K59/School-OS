@@ -75,8 +75,8 @@ export function UserMenu() {
     try {
       logout();
       setIsOpen(false);
-      // Replace URL to prevent browser history back-navigation to protected state
-      router.replace('/login');
+      // Hard replace location to purge all React context memory and invalidate history entry
+      window.location.replace('/login');
     } catch (err) {
       console.error('Logout error:', err);
       setIsLoggingOut(false);
@@ -148,7 +148,7 @@ export function UserMenu() {
         aria-expanded={isOpen}
         aria-haspopup="menu"
         aria-label="User profile and account menu"
-        className="flex items-center gap-2 sm:gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+        className="flex items-center gap-1.5 sm:gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shrink-0 max-w-[170px] sm:max-w-[210px]"
       >
         <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center font-black text-xs shadow-xs shrink-0 ${
           isStudentRole
@@ -156,20 +156,20 @@ export function UserMenu() {
             : isSuperAdminRole
             ? 'bg-gradient-to-tr from-purple-600 to-indigo-700'
             : 'bg-gradient-to-tr from-indigo-600 to-purple-600'
-        }`}>
+        }`} suppressHydrationWarning>
           {initials}
         </div>
 
-        <div className="hidden sm:flex flex-col text-left">
-          <span className="text-xs font-black text-slate-800 leading-tight truncate max-w-[130px]">
+        <div className="hidden sm:flex flex-col text-left min-w-0" suppressHydrationWarning>
+          <span className="text-xs font-black text-slate-800 leading-tight truncate max-w-[100px] sm:max-w-[130px]" suppressHydrationWarning>
             {displayName}
           </span>
-          <span className="text-[10px] text-slate-500 font-semibold truncate max-w-[130px]">
+          <span className="text-[10px] text-slate-500 font-semibold truncate max-w-[100px] sm:max-w-[130px]" suppressHydrationWarning>
             {displaySubtitle}
           </span>
         </div>
 
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-indigo-600' : ''}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-indigo-600' : ''}`} />
       </button>
 
       {/* Profile Dropdown Panel with solid background & click-away overlay */}
@@ -186,7 +186,7 @@ export function UserMenu() {
             role="menu"
             aria-orientation="vertical"
             style={{ backgroundColor: '#ffffff', opacity: 1 }}
-            className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 sm:max-w-sm rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] z-50 animate-fade-in max-h-[calc(100vh-5rem)] overflow-y-auto focus:outline-none ring-1 ring-slate-900/5"
+            className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] z-50 animate-fade-in max-h-[calc(100vh-5rem)] overflow-y-auto focus:outline-none ring-1 ring-slate-900/5"
           >
             {/* ===============================================================
                 1. STUDENT PROFILE MENU

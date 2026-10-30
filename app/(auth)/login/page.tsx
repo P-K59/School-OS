@@ -423,43 +423,26 @@ function LoginForm() {
                 )}
               </button>
 
-              {/* Discreet 1-Click Demo Profile Switcher for Evaluation */}
-              <div className="mt-4 pt-3 border-t border-slate-100 text-center space-y-1.5">
-                <span className="text-[10px] text-slate-400 font-semibold block">
-                  Quick Fill Demo Credentials:
-                </span>
-                <div className="flex items-center justify-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentifier('superadmin@innovatmind.com');
-                      setPassword('password123');
-                    }}
-                    className="px-2 py-0.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-bold border border-purple-200 transition-colors cursor-pointer"
-                  >
-                    Super Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentifier('principal@delhitech.edu.in');
-                      setPassword('password123');
-                    }}
-                    className="px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    School Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentifier('STU-DEL-001');
-                      setPassword('password123');
-                    }}
-                    className="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold border border-emerald-200 transition-colors cursor-pointer"
-                  >
-                    Student Cadet (STU-DEL-001)
-                  </button>
-                </div>
+              {/* Registration & Status Tracking Links */}
+              <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-center gap-2 text-xs text-slate-500 font-semibold">
+                <Link href="/register" className="hover:text-blue-600 transition-colors">
+                  Register New School
+                </Link>
+                <span className="text-slate-300 hidden sm:inline">•</span>
+                <Link href="/register/status" className="text-blue-600 hover:text-blue-800 transition-colors">
+                  Track Application Status →
+                </Link>
+              </div>
+
+              {/* Discreet Demo Preview Link to Landing Page */}
+              <div className="mt-2 text-center">
+                <Link
+                  href="/?demo=open"
+                  className="text-xs text-slate-500 hover:text-blue-600 font-semibold transition-colors inline-flex items-center gap-1 group"
+                >
+                  <span>Looking for the Demo Preview? Explore sample sandbox on Home Page</span>
+                  <span className="group-hover:translate-x-0.5 transition-transform">&rarr;</span>
+                </Link>
               </div>
 
               {/* Terms of Service & Privacy Policy */}
@@ -561,7 +544,7 @@ function LoginForm() {
                     type="text"
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
-                    placeholder="e.g. principal@school.edu or STU-DEL-001"
+                    placeholder="e.g. principal@institution.edu or Student ID"
                     className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white"
                     required
                   />
@@ -620,124 +603,53 @@ function LoginForm() {
               </div>
             ) : (
               <>
-                {/* List of Verified Linked School Profiles */}
-                <div className="space-y-2">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                    Institutional Google Accounts:
-                  </span>
-
-                  {/* School Admin */}
-                  <button
-                    type="button"
-                    disabled={isGoogleLoading}
-                    onClick={() => executeGoogleAuth('principal@delhitech.edu.in')}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-between text-left transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center">
-                        AS
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 group-hover:text-blue-700">Dr. Ananya Sharma</div>
-                        <div className="text-[11px] text-slate-500">principal@delhitech.edu.in</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-blue-100 text-blue-700">
-                      School Admin
-                    </span>
-                  </button>
-
-                  {/* Student */}
-                  <button
-                    type="button"
-                    disabled={isGoogleLoading}
-                    onClick={() => executeGoogleAuth('aarav.v@student.delhitech.edu.in')}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 flex items-center justify-between text-left transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center">
-                        AV
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-700">Aarav Verma</div>
-                        <div className="text-[11px] text-slate-500">aarav.v@student.delhitech.edu.in</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">
-                      Student Cadet
-                    </span>
-                  </button>
-
-                  {/* Teacher */}
-                  <button
-                    type="button"
-                    disabled={isGoogleLoading}
-                    onClick={() => executeGoogleAuth('rajesh.kumar@delhitech.edu.in')}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/50 flex items-center justify-between text-left transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center">
-                        RK
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 group-hover:text-purple-700">Rajesh Kumar</div>
-                        <div className="text-[11px] text-slate-500">rajesh.kumar@delhitech.edu.in</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-purple-100 text-purple-700">
-                      Teacher
-                    </span>
-                  </button>
-
-                  {/* Super Admin */}
-                  <button
-                    type="button"
-                    disabled={isGoogleLoading}
-                    onClick={() => executeGoogleAuth('superadmin@innovatmind.com')}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex items-center justify-between text-left transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center">
-                        PK
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 group-hover:text-indigo-700">Pankaj Kumar</div>
-                        <div className="text-[11px] text-slate-500">superadmin@innovatmind.com</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700">
-                      Super Admin
-                    </span>
-                  </button>
-                </div>
-
-                {/* Custom Google Email Input */}
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <label htmlFor="custom-google-input" className="text-[11px] font-bold text-slate-700 block">
-                    Use Another Google Account:
-                  </label>
-                  <div className="flex gap-2">
+                {/* Institutional Google Workspace Sign-In Form */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (customGoogleEmail.trim()) {
+                      executeGoogleAuth(customGoogleEmail.trim());
+                    }
+                  }}
+                  className="space-y-4 py-2"
+                >
+                  <div className="space-y-1.5 text-left">
+                    <label htmlFor="custom-google-input" className="text-xs font-bold text-slate-700 block">
+                      Institutional Google Workspace Email
+                    </label>
                     <input
                       id="custom-google-input"
                       type="email"
                       value={customGoogleEmail}
                       onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                      placeholder="your.name@gmail.com"
-                      className="flex-1 h-9 px-3 rounded-lg border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                      placeholder="principal@institution.edu.in or yourname@school.org"
+                      required
+                      autoFocus
+                      className="w-full h-11 px-3.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-sans"
                     />
-                    <button
-                      type="button"
-                      disabled={!customGoogleEmail || isGoogleLoading}
-                      onClick={() => executeGoogleAuth(customGoogleEmail)}
-                      className="h-9 px-3 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
-                    >
-                      Verify & Sign In
-                    </button>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Enter your verified Google Workspace email provisioned by your school or InnovatMind HQ.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400">
-                    Accounts must be provisioned or linked by your school administrator to grant platform access.
-                  </p>
-                </div>
+
+                  <button
+                    type="submit"
+                    disabled={!customGoogleEmail.trim() || isGoogleLoading}
+                    className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isGoogleLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Verifying Institutional Account...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Continue with Google Account</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
               </>
             )}
 

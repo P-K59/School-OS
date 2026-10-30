@@ -121,10 +121,10 @@ export default function SuperadminCourseBuilder() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Difficulty</label>
-                  <select className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 appearance-none">
+                  <select defaultValue="Advanced" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 appearance-none">
                     <option>Beginner</option>
                     <option>Intermediate</option>
-                    <option selected>Advanced</option>
+                    <option>Advanced</option>
                   </select>
                 </div>
               </div>

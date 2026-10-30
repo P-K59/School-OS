@@ -223,7 +223,7 @@ export function LecturePlan() {
       </div>
 
       {/* 4 Clean Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
         <div className="card-3d rounded-2xl p-4 sm:p-5">
           <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-2">
             <span>Total Periods</span>
@@ -278,14 +278,14 @@ export function LecturePlan() {
       </div>
 
       {/* Class Filter Bar & Search */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Class Selector */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none flex-1 min-w-0">
           {['ALL', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'].map(cls => (
             <button
               key={cls}
               onClick={() => setSelectedClass(cls)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
                 selectedClass === cls
                   ? 'btn-3d-primary'
                   : 'btn-3d-secondary text-slate-600'
@@ -297,11 +297,11 @@ export function LecturePlan() {
         </div>
 
         {/* Search */}
-        <div className="relative min-w-[220px]">
+        <div className="relative w-full md:w-64 shrink-0">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search subject, chapter or faculty..."
+            placeholder="Search subject, chapter..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white"

@@ -50,8 +50,8 @@ export default function NewSchoolRegistrationPage() {
     contactPersonPhone: '',
     contactPersonEmail: '',
     academicSession: '2026-2027',
-    totalStudents: 600,
-    totalStaff: 35,
+    totalStudents: 0,
+    totalStaff: 0,
     onboardingStatus: 'ACTIVE' as SchoolOnboardingStage,
     contractStartDate: new Date().toISOString().split('T')[0],
     contractEndDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
@@ -133,13 +133,17 @@ export default function NewSchoolRegistrationPage() {
         contactPersonPhone: form.contactPersonPhone.trim() || form.phone.trim(),
         contactPersonEmail: form.contactPersonEmail.trim() || form.email.trim(),
         academicSession: form.academicSession,
-        totalStudents: Number(form.totalStudents) || 500,
-        totalStaff: Number(form.totalStaff) || 30,
+        totalStudents: Number(form.totalStudents) || 0,
+        totalStaff: Number(form.totalStaff) || 0,
         onboardingStatus: form.onboardingStatus,
         contractStartDate: form.contractStartDate,
         contractEndDate: form.contractEndDate,
         notes: form.notes.trim(),
-        isActive: form.onboardingStatus === 'ACTIVE'
+        isActive: form.onboardingStatus === 'ACTIVE',
+        adminCredentials: {
+          loginId: form.email.trim().toLowerCase(),
+          email: form.email.trim().toLowerCase(),
+        } as any
       });
 
       if (res.success && res.school) {
@@ -193,11 +197,15 @@ export default function NewSchoolRegistrationPage() {
                 <h3 className="text-lg font-bold text-slate-900">
                   School Provisioned Successfully! 🎉
                 </h3>
-                <p className="text-xs text-slate-600">
-                  {provisionedResult.school.name} is now registered under code{' '}
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {provisionedResult.school.name} is now registered under Registration ID{' '}
+                  <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                    {provisionedResult.school.registrationId || provisionedResult.school.code}
+                  </span>{' '}
+                  (Code:{' '}
                   <span className="font-mono font-bold text-indigo-700 bg-indigo-100/70 px-1.5 py-0.5 rounded">
                     {provisionedResult.school.code}
-                  </span>.
+                  </span>).
                 </p>
               </div>
             </div>
@@ -214,7 +222,7 @@ export default function NewSchoolRegistrationPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Admin Login ID</span>
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Admin Login Email / ID</span>
                     <span className="font-mono font-bold text-slate-900">{provisionedResult.loginId}</span>
                   </div>
                   <Button

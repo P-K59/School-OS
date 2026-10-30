@@ -30,3 +30,8 @@ yarn-error.log*
 # TypeScript cache
 *.tsbuildinfo
 next-env.d.ts
+
+# Local Server Runtime Data
+.data/
+scratch/
+supabase/.temp/

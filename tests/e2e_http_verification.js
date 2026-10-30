@@ -41,14 +41,14 @@ test('E2E Content: Landing page renders headline, stakeholder ecosystem, and rob
   assert.match(html, /Coding, AI, Robotics/);
 });
 
-test('E2E Content: Central Login page provides Cadet Student ID, Google Sign-In, and Role Gateways', async () => {
+test('E2E Content: Central Login page provides Cadet Student ID, Google Sign-In, and Secure Gateway', async () => {
   const res = await fetch(`${baseUrl}/login`);
   const html = await res.text();
   assert.match(html, /InnovatMind/);
   assert.match(html, /Continue with Google/);
   assert.match(html, /google-signin-button/);
-  assert.match(html, /Super Admin/);
-  assert.match(html, /School Admin/);
+  assert.match(html, /Welcome Back/);
+  assert.match(html, /Enter your email or username/);
 });
 
 test('E2E Redirects: Dashboard alias routes safely redirect to canonical workspaces', async () => {

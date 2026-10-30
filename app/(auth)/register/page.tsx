@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
@@ -23,33 +23,36 @@ import {
   Users,
   Cpu,
   Layers,
-  CreditCard
+  CreditCard,
+  Clock,
+  AlertCircle
 } from 'lucide-react';
 
 export default function SchoolRegisterPage() {
   const router = useRouter();
-  const { registerSchool } = useAuth();
+  const { registerSchool, login } = useAuth();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [submittedSchool, setSubmittedSchool] = useState<{ name: string; code: string; email: string; password?: string; registrationId?: string } | null>(null);
 
   // Institution State
-  const [schoolName, setSchoolName] = useState('Pune Future Tech Academy');
+  const [schoolName, setSchoolName] = useState('');
   const [schoolType, setSchoolType] = useState<SchoolType>('CBSE');
-  const [city, setCity] = useState('Pune');
-  const [stateName, setStateName] = useState('Maharashtra');
-  const [address, setAddress] = useState('Hinjawadi IT Park, Phase 1');
-  const [postalCode, setPostalCode] = useState('411057');
-  const [officialEmail, setOfficialEmail] = useState('principal@punetech.edu.in');
-  const [phone, setPhone] = useState('+91 98230 11223');
-  const [studentCapacity, setStudentCapacity] = useState(850);
-  const [staffCapacity, setStaffCapacity] = useState(54);
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
+  const [address, setAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [officialEmail, setOfficialEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [studentCapacity, setStudentCapacity] = useState(0);
+  const [staffCapacity, setStaffCapacity] = useState(0);
 
   // Principal State
-  const [principalFirstName, setPrincipalFirstName] = useState('Dr. Priya');
-  const [principalLastName, setPrincipalLastName] = useState('Deshmukh');
-  const [principalEmail, setPrincipalEmail] = useState('priya.deshmukh@punetech.edu.in');
-  const [password, setPassword] = useState('password123');
+  const [principalFirstName, setPrincipalFirstName] = useState('');
+  const [principalLastName, setPrincipalLastName] = useState('');
+  const [principalEmail, setPrincipalEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [designation, setDesignation] = useState('Principal & Director');
 
   // Add-ons State
@@ -57,9 +60,14 @@ export default function SchoolRegisterPage() {
   const [hasCodingArcade, setHasCodingArcade] = useState(true);
   const [hasFeeGateway, setHasFeeGateway] = useState(true);
 
-  // Computed tenant code
-  const cityCode = city.trim().slice(0, 3).toUpperCase() || 'SCH';
-  const computedSchoolCode = `SCH-${cityCode}-004`;
+
+  // Computed tenant code (deterministic for SSR hydration safety)
+  const cityCode = (city || 'SCH').trim().slice(0, 3).toUpperCase();
+  const [randomCodeSuffix, setRandomCodeSuffix] = useState('101');
+  useEffect(() => {
+    setRandomCodeSuffix(Math.floor(100 + Math.random() * 900).toString());
+  }, []);
+  const computedSchoolCode = `SCH-${cityCode}-${randomCodeSuffix}`;
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,8 +84,8 @@ export default function SchoolRegisterPage() {
         state: stateName,
         country: 'India',
         postalCode: postalCode,
-        totalStudents: Number(studentCapacity),
-        totalStaff: Number(staffCapacity),
+        totalStudents: 0,
+        totalStaff: 0,
       },
       {
         firstName: principalFirstName,
@@ -89,11 +97,32 @@ export default function SchoolRegisterPage() {
       }
     );
 
-    if (result.success) {
-      setSuccessNotice(`Institution "${result.school.name}" successfully registered with code ${result.school.code}! Launching Mission Control...`);
-      setTimeout(() => {
-        router.push('/school');
-      }, 1200);
+    setIsLoading(false);
+
+    if (result.success && result.school) {
+      setErrorMessage(null);
+      setSubmittedSchool({
+        name: result.school.name,
+        code: result.school.code,
+        registrationId: result.school.registrationId,
+        email: principalEmail || officialEmail,
+        password: password,
+      });
+    } else {
+      setErrorMessage(result.error || 'Failed to submit registration request. Please try again.');
+    }
+  };
+
+  const handleInstantLogin = async () => {
+    if (!submittedSchool) return;
+    setIsLoading(true);
+    const targetPassword = submittedSchool.password || password;
+    const res = await login(submittedSchool.email, targetPassword);
+    setIsLoading(false);
+    if (res.success) {
+      router.push('/school');
+    } else {
+      router.push('/login');
     }
   };
 
@@ -116,13 +145,20 @@ export default function SchoolRegisterPage() {
             </div>
           </Link>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 hidden sm:inline">Already registered?</span>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/register/status"
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1.5"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Track Application Status</span>
+            </Link>
+            <span className="text-slate-300 hidden sm:inline">•</span>
             <Link
               href="/login"
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+              className="text-xs font-bold text-slate-700 hover:text-slate-900 transition-colors hidden sm:inline"
             >
-              Sign In to Existing School →
+              Sign In →
             </Link>
           </div>
         </div>
@@ -130,27 +166,104 @@ export default function SchoolRegisterPage() {
 
       {/* Main Registration Form Container */}
       <main className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-6 lg:p-8">
-        <div className="text-center max-w-2xl mx-auto mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold mb-3 shadow-xs">
-            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Multi-Tenant School Onboarding</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Register Your School Institution
-          </h1>
-          <p className="mt-2 text-sm text-slate-600 font-medium">
-            Instantly spin up an isolated ERP, Fee Ledger, and STEM Robotics Lab workspace tailored to your board affiliation.
-          </p>
-        </div>
+        {submittedSchool ? (
+          <div className="max-w-2xl mx-auto py-8">
+            <Card className="light-glass p-8 sm:p-10 rounded-3xl shadow-xl border-amber-200/80 bg-white space-y-6 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
+                <Clock className="w-8 h-8" />
+              </div>
 
-        {successNotice && (
-          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-bold flex items-center gap-3 animate-fade-in shadow-xs">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>{successNotice}</span>
-          </div>
-        )}
+              <div>
+                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                  Application Submitted • Pending Super Admin Approval
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-4 tracking-tight">
+                  Registration Awaiting Super Admin Confirmation
+                </h1>
+                <p className="text-sm text-slate-600 mt-2 font-medium">
+                  Thank you for registering <strong className="text-slate-900">{submittedSchool.name}</strong>. In accordance with institutional platform policy, your self-registered account requires verification and approval from InnovatMind Super Admin before login is activated.
+                </p>
+              </div>
 
-        <form onSubmit={handleRegisterSubmit} className="space-y-6">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-left space-y-2 text-xs">
+                <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500 font-semibold">Registered Institution:</span>
+                  <span className="font-bold text-slate-900">{submittedSchool.name}</span>
+                </div>
+                {submittedSchool.registrationId && (
+                  <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                    <span className="text-slate-500 font-semibold">Unique Registration ID:</span>
+                    <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{submittedSchool.registrationId}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500 font-semibold">Allocated Tenant Code:</span>
+                  <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{submittedSchool.code}</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500 font-semibold">Principal Login ID (Email):</span>
+                  <span className="font-mono font-bold text-slate-900">{submittedSchool.email}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-slate-500 font-semibold">Current Account Status:</span>
+                  <span className="inline-flex items-center gap-1.5 font-bold text-amber-700">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                    Pending Super Admin Approval
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 font-medium text-left">
+                <strong>Super Admin Workflow:</strong> Your school is now visible in the Super Admin Central Dashboard under <em>Pending Registrations</em>. Once the Super Admin clicks <strong>Approve & Activate</strong>, you can immediately log in using your Principal Email ID and password.
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <Link href={`/register/status?id=${encodeURIComponent(submittedSchool.registrationId || submittedSchool.code)}`} className="w-full sm:w-auto">
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-6 py-2.5 rounded-xl cursor-pointer flex items-center justify-center gap-2">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Track Live Application Status</span>
+                  </Button>
+                </Link>
+                <Link href="/login" className="w-full sm:w-auto">
+                  <Button variant="outline" className="w-full border-slate-300 text-slate-700 font-bold text-xs px-6 py-2.5 rounded-xl cursor-pointer">
+                    Go to Login Screen
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <>
+            <div className="text-center max-w-2xl mx-auto mb-8">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold mb-3 shadow-xs">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Multi-Tenant School Onboarding</span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+                Register Your School Institution
+              </h1>
+              <p className="mt-2 text-sm text-slate-600 font-medium">
+                Instantly spin up an isolated ERP, Fee Ledger, and STEM Robotics Lab workspace tailored to your board affiliation.
+              </p>
+              <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-500">
+                <span>Already applied?</span>
+                <Link href="/register/status" className="font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
+                  Check your application approval status →
+                </Link>
+              </div>
+            </div>
+
+            {errorMessage && (
+              <div className="max-w-2xl mx-auto mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 shadow-sm">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm">
+                  <span className="font-bold block mb-0.5">Registration Failed</span>
+                  <p>{errorMessage}</p>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleRegisterSubmit} className="space-y-6">
           {/* Section 1: Institutional Core Profile */}
           <Card className="light-glass p-6 sm:p-8 rounded-3xl shadow-md border-slate-200">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
@@ -164,12 +277,14 @@ export default function SchoolRegisterPage() {
                 </div>
               </div>
 
-              {/* Dynamic School Code Generated Badge */}
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Tenant Code Preview</span>
-                <span className="font-mono text-xs font-extrabold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-200">
-                  {computedSchoolCode}
-                </span>
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Dynamic School Code Generated Badge */}
+                <div className="hidden sm:flex flex-col text-right">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Tenant Code Preview</span>
+                  <span className="font-mono text-xs font-extrabold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-200">
+                    {computedSchoolCode}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -464,6 +579,8 @@ export default function SchoolRegisterPage() {
             </Button>
           </div>
         </form>
+          </>
+        )}
       </main>
 
       {/* Footer */}

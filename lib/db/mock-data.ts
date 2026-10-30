@@ -23,8 +23,111 @@ import {
   SchoolPricingOverride,
   SchoolCourseAssignment,
   TrainerProfile,
-  TrainerAllocation
+  TrainerAllocation,
+  AttendanceRecord,
+  PaymentReceipt,
+  InstitutionalFeeStructure,
+  NoticeBroadcast
 } from '../types';
+
+/**
+ * Returns true if a school is one of the built-in demo fixtures (school-1 through school-13, sch-del-001, etc.)
+ */
+export const isDemoSchool = (s: School | { id: string; isDemo?: boolean } | null | undefined): boolean => {
+  if (!s) return false;
+  if (s.isDemo === true) return true;
+  if (s.id === 'sch-del-001' || s.id === 'sch-mum-002') return true;
+  // All demo seed schools have IDs school-1 through school-13
+  if (/^school-(1[0-3]|[1-9])$/.test(s.id)) return true;
+  return false;
+};
+
+/**
+ * Returns true if a school is an actual onboarded school (created via Super Admin or verified self-registration)
+ */
+export const isRealSchool = (s: School | { id: string; isDemo?: boolean } | null | undefined): boolean => {
+  if (!s) return false;
+  return !isDemoSchool(s);
+};
+
+// Verified Working Real School (for actual operational usage & Super Admin management)
+export const initialWorkingRealSchool: School = {
+  id: 'sch-del-101',
+  registrationId: 'IMS-2026-000101',
+  code: 'SCH-DEL-101',
+  name: 'Apex National Academy',
+  schoolType: 'CBSE',
+  email: 'principal@apexnational.edu.in',
+  phone: '+91 98100 12345',
+  address: 'Plot 18, Institutional Area, Vasant Kunj',
+  city: 'New Delhi',
+  state: 'Delhi',
+  country: 'India',
+  postalCode: '110070',
+  region: 'North',
+  isActive: true,
+  isDemo: false,
+  totalStudents: 0,
+  totalStaff: 1,
+  enrolledCoursesCount: 0,
+  createdAt: '2026-01-15T08:00:00Z',
+  principalName: 'Dr. Rajesh Malhotra',
+  contactPersonName: 'Dr. Rajesh Malhotra',
+  contactPersonPhone: '+91 98100 12345',
+  contactPersonEmail: 'principal@apexnational.edu.in',
+  onboardingStatus: 'ACTIVE',
+  academicSession: '2026-2027',
+  contractStartDate: '2026-04-01',
+  contractEndDate: '2027-03-31',
+  notes: 'Verified institutional CBSE partner campus.',
+  adminCredentials: {
+    loginId: 'admin.apex@innovatmind.com',
+    email: 'principal@apexnational.edu.in',
+    temporaryPassword: 'Pass@Apex2026',
+    generatedAt: '2026-01-15T08:05:00Z',
+    provisionedBy: 'InnovatMind Super Admin HQ',
+  },
+};
+
+// Verified Operating School: Nirmaan Future Academy (Pankaj Kumar)
+export const nirmaanOrgSchool: School = {
+  id: 'sch-nir-001',
+  registrationId: 'IMS-2026-000102',
+  code: 'SCH-NIR-001',
+  name: 'Nirmaan Future Academy',
+  schoolType: 'CBSE',
+  email: 'pankaj@nirmaan.org',
+  phone: '+91 98000 11653',
+  address: 'Nirmaan Educational Campus, Tech Zone',
+  city: 'New Delhi',
+  state: 'Delhi',
+  country: 'India',
+  postalCode: '110001',
+  region: 'North',
+  isActive: true,
+  isDemo: false,
+  totalStudents: 0,
+  totalStaff: 1,
+  enrolledCoursesCount: 0,
+  createdAt: '2026-01-20T08:00:00Z',
+  principalName: 'Pankaj Kumar',
+  contactPersonName: 'Pankaj Kumar',
+  contactPersonPhone: '+91 98000 11653',
+  contactPersonEmail: 'pankaj@nirmaan.org',
+  onboardingStatus: 'ACTIVE',
+  academicSession: '2026-2027',
+  contractStartDate: '2026-04-01',
+  contractEndDate: '2027-03-31',
+  notes: 'Nirmaan Organization Campus.',
+  portalTitle: 'Nirmaan School OS',
+  adminCredentials: {
+    loginId: 'pankaj@nirmaan.org',
+    email: 'pankaj@nirmaan.org',
+    temporaryPassword: 'Pass@1653',
+    generatedAt: '2026-01-20T08:00:00Z',
+    provisionedBy: 'InnovatMind Provisioning HQ',
+  },
+};
 
 export const initialSchools: School[] = [
   {
@@ -423,6 +526,28 @@ export const demoUsers: (UserProfile & { password: string })[] = [
     isActive: true,
   },
   {
+    id: 'usr-admin-apex',
+    schoolId: 'sch-del-101',
+    role: 'SCHOOL_ADMIN',
+    firstName: 'Dr. Rajesh',
+    lastName: 'Malhotra',
+    email: 'principal@apexnational.edu.in',
+    password: 'password123',
+    designation: 'Principal & Director',
+    isActive: true,
+  },
+  {
+    id: 'usr-admin-nirmaan',
+    schoolId: 'sch-nir-001',
+    role: 'SCHOOL_ADMIN',
+    firstName: 'Pankaj',
+    lastName: 'Kumar',
+    email: 'pankaj@nirmaan.org',
+    password: 'Pass@1653',
+    designation: 'School Director & Principal',
+    isActive: true,
+  },
+  {
     id: 'usr-admin-1',
     schoolId: 'school-1',
     role: 'SCHOOL_ADMIN',
@@ -503,6 +628,23 @@ export const demoUsers: (UserProfile & { password: string })[] = [
 
 // Multi-Tenant Staff Directory
 export const initialStaff: StaffMember[] = [
+  // Apex National Academy Working Staff
+  {
+    id: 'stf-apex-001',
+    schoolId: 'sch-del-101',
+    employeeId: 'EMP-DEL-001',
+    name: 'Dr. Rajesh Malhotra',
+    designation: 'Principal & Director',
+    department: 'Administration',
+    email: 'principal@apexnational.edu.in',
+    phone: '+91 98100 12345',
+    joiningDate: '2026-01-15',
+    basicSalary: 95000,
+    allowances: 25000,
+    attendanceRate: 100.0,
+    status: 'ACTIVE',
+  },
+
   // School 1 Staff
   {
     id: 'stf-1',
@@ -2398,4 +2540,286 @@ export const initialTrainerAllocations: TrainerAllocation[] = [
     createdAt: '2026-04-01T12:00:00Z'
   }
 ];
+
+// Institutional Fee Structures (Configured Grade-wise Structures)
+export const initialFeeStructures: InstitutionalFeeStructure[] = [
+  // School 1 (Delhi Public Tech Academy)
+  {
+    id: 'fee-str-1',
+    schoolId: 'school-1',
+    gradeName: 'Grade 6',
+    academicSession: '2025–26',
+    tuitionFee: 20000,
+    stemLabFee: 5000,
+    examLibraryFee: 2000,
+    annualCharges: 1500,
+    totalAnnualFee: 28500,
+  },
+  {
+    id: 'fee-str-2',
+    schoolId: 'school-1',
+    gradeName: 'Grade 7',
+    academicSession: '2025–26',
+    tuitionFee: 22000,
+    stemLabFee: 6000,
+    examLibraryFee: 2500,
+    annualCharges: 1500,
+    totalAnnualFee: 32000,
+  },
+  {
+    id: 'fee-str-3',
+    schoolId: 'school-1',
+    gradeName: 'Grade 8',
+    academicSession: '2025–26',
+    tuitionFee: 23000,
+    stemLabFee: 6000,
+    examLibraryFee: 2500,
+    annualCharges: 1500,
+    totalAnnualFee: 33000,
+  },
+  {
+    id: 'fee-str-4',
+    schoolId: 'school-1',
+    gradeName: 'Grade 9',
+    academicSession: '2025–26',
+    tuitionFee: 25000,
+    stemLabFee: 7000,
+    examLibraryFee: 3000,
+    annualCharges: 2000,
+    totalAnnualFee: 37000,
+  },
+  {
+    id: 'fee-str-5',
+    schoolId: 'school-1',
+    gradeName: 'Grade 10',
+    academicSession: '2025–26',
+    tuitionFee: 27000,
+    stemLabFee: 7000,
+    examLibraryFee: 3000,
+    annualCharges: 2000,
+    totalAnnualFee: 39000,
+  },
+
+  // School 2 (Greenwood STEM International)
+  {
+    id: 'fee-str-blr-1',
+    schoolId: 'school-2',
+    gradeName: 'Grade 6 (ICSE)',
+    academicSession: '2025–26',
+    tuitionFee: 21000,
+    stemLabFee: 5500,
+    examLibraryFee: 2000,
+    annualCharges: 1500,
+    totalAnnualFee: 30000,
+  },
+  {
+    id: 'fee-str-blr-2',
+    schoolId: 'school-2',
+    gradeName: 'Grade 7 (ICSE)',
+    academicSession: '2025–26',
+    tuitionFee: 24000,
+    stemLabFee: 6000,
+    examLibraryFee: 2500,
+    annualCharges: 1500,
+    totalAnnualFee: 34000,
+  }
+];
+
+// Official Initial Payment Receipts
+export const initialPaymentReceipts: PaymentReceipt[] = [
+  {
+    receiptNumber: 'REC-2025-001',
+    invoiceId: 'inv-1',
+    invoiceNumber: 'INV-2025-001',
+    schoolId: 'school-1',
+    schoolName: 'Delhi Public Tech Academy',
+    studentId: 'stud-1',
+    studentName: 'Aarav Verma',
+    admissionNumber: 'ADM-2025-0101',
+    gradeName: 'Grade 6',
+    sectionName: 'Section A (Cyber)',
+    category: 'Term 1 Tuition + STEM Lab Fee',
+    amountPaid: 28500,
+    paymentMode: 'UPI',
+    totalAmount: 28500,
+    discountAmount: 0,
+    previousPaidAmount: 0,
+    remainingBalance: 0,
+    status: 'PAID',
+    paidAt: '2025-04-10T10:15:00Z',
+    authorizedSignatory: 'Accounts Department / Bursar'
+  },
+  {
+    receiptNumber: 'REC-2025-004',
+    invoiceId: 'inv-4',
+    invoiceNumber: 'INV-2025-004',
+    schoolId: 'school-1',
+    schoolName: 'Delhi Public Tech Academy',
+    studentId: 'stud-2',
+    studentName: 'Diya Nair',
+    admissionNumber: 'ADM-2025-0102',
+    gradeName: 'Grade 6',
+    sectionName: 'Section A (Cyber)',
+    category: 'Term 1 Tuition + Cyber STEM',
+    amountPaid: 28500,
+    paymentMode: 'NET_BANKING',
+    totalAmount: 28500,
+    discountAmount: 0,
+    previousPaidAmount: 0,
+    remainingBalance: 0,
+    status: 'PAID',
+    paidAt: '2025-04-12T11:30:00Z',
+    authorizedSignatory: 'Accounts Department / Bursar'
+  },
+  {
+    receiptNumber: 'REC-2025-002',
+    invoiceId: 'inv-5',
+    invoiceNumber: 'INV-2025-002',
+    schoolId: 'school-1',
+    schoolName: 'Delhi Public Tech Academy',
+    studentId: 'stud-4',
+    studentName: 'Zara Khan',
+    admissionNumber: 'ADM-2025-0104',
+    gradeName: 'Grade 7',
+    sectionName: 'Section A (AI Lab)',
+    category: 'Term 1 Tuition + AI Program',
+    amountPaid: 32000,
+    paymentMode: 'UPI',
+    totalAmount: 32000,
+    discountAmount: 0,
+    previousPaidAmount: 0,
+    remainingBalance: 0,
+    status: 'PAID',
+    paidAt: '2025-04-15T09:45:00Z',
+    authorizedSignatory: 'Accounts Department / Bursar'
+  },
+  {
+    receiptNumber: 'REC-2025-005',
+    invoiceId: 'inv-3',
+    invoiceNumber: 'INV-2025-005',
+    schoolId: 'school-1',
+    schoolName: 'Delhi Public Tech Academy',
+    studentId: 'stud-5',
+    studentName: 'Rohan Gupta',
+    admissionNumber: 'ADM-2025-0105',
+    gradeName: 'Grade 8',
+    sectionName: 'Section A (Python)',
+    category: 'Term 1 Tuition + AI Program',
+    amountPaid: 15000,
+    paymentMode: 'CASH',
+    totalAmount: 32000,
+    discountAmount: 2000,
+    previousPaidAmount: 0,
+    remainingBalance: 15000,
+    status: 'PARTIAL',
+    paidAt: '2025-04-18T14:20:00Z',
+    authorizedSignatory: 'Accounts Department / Bursar'
+  }
+];
+
+// Initial Dated Attendance Records
+export const initialAttendanceRecords: AttendanceRecord[] = [
+  // Aarav Verma (stud-1)
+  {
+    id: 'att-1',
+    schoolId: 'school-1',
+    studentId: 'stud-1',
+    date: new Date().toISOString().split('T')[0],
+    status: 'PRESENT',
+    markedAt: new Date().toISOString(),
+    markedBy: 'Faculty: Rajesh Kumar'
+  },
+  // Diya Nair (stud-2)
+  {
+    id: 'att-2',
+    schoolId: 'school-1',
+    studentId: 'stud-2',
+    date: new Date().toISOString().split('T')[0],
+    status: 'PRESENT',
+    markedAt: new Date().toISOString(),
+    markedBy: 'Faculty: Rajesh Kumar'
+  },
+  // Kabir Mehta (stud-3)
+  {
+    id: 'att-3',
+    schoolId: 'school-1',
+    studentId: 'stud-3',
+    date: new Date().toISOString().split('T')[0],
+    status: 'PRESENT',
+    markedAt: new Date().toISOString(),
+    markedBy: 'Faculty: Rajesh Kumar'
+  },
+  // Zara Khan (stud-4)
+  {
+    id: 'att-4',
+    schoolId: 'school-1',
+    studentId: 'stud-4',
+    date: new Date().toISOString().split('T')[0],
+    status: 'PRESENT',
+    markedAt: new Date().toISOString(),
+    markedBy: 'Faculty: Amit Sen'
+  },
+  // Rohan Gupta (stud-5)
+  {
+    id: 'att-5',
+    schoolId: 'school-1',
+    studentId: 'stud-5',
+    date: new Date().toISOString().split('T')[0],
+    status: 'PRESENT',
+    markedAt: new Date().toISOString(),
+    markedBy: 'Faculty: Amit Sen'
+  }
+];
+
+export const initialNotices: NoticeBroadcast[] = [
+  {
+    id: 'notif-1',
+    schoolId: 'school-1',
+    title: 'Severe Weather Warning: School Dispersal at 01:30 PM Today',
+    messageContent: 'EMERGENCY WEATHER BULLETIN: Due to heavy rain and waterlogging alerts issued by district administration, all classroom sessions will conclude early at 01:30 PM. School transport bus routes are operating on priority dispatch with live GPS tracking enabled.',
+    priority: 'URGENT',
+    targetAudience: 'ALL',
+    channels: ['PORTAL', 'WHATSAPP', 'SMS', 'PUSH'],
+    isEmergencyBanner: true,
+    sentAt: '2026-10-29T08:30:00.000Z',
+    authorName: 'Dr. Ananya Sharma (Principal)',
+    deliveredCount: 650,
+    totalRecipients: 650,
+    openRate: 99.2,
+    status: 'PUBLISHED'
+  },
+  {
+    id: 'notif-2',
+    schoolId: 'school-1',
+    title: 'Official Holiday: Regional Festival & Diwali Break',
+    messageContent: 'Notice to all students, parents, and staff: The school will observe official institutional holidays from Friday, 31st October to Tuesday, 4th November. Regular academic and lab sessions will resume on Wednesday at 08:00 AM.',
+    priority: 'HOLIDAY',
+    targetAudience: 'ALL',
+    channels: ['PORTAL', 'WHATSAPP', 'EMAIL'],
+    isEmergencyBanner: false,
+    sentAt: '2026-10-28T10:00:00.000Z',
+    authorName: 'Administrative Directorate',
+    deliveredCount: 642,
+    totalRecipients: 650,
+    openRate: 95.8,
+    status: 'PUBLISHED'
+  },
+  {
+    id: 'notif-3',
+    schoolId: 'school-1',
+    title: 'Term 1 STEM Robotics & Coding Showcase Registration Open',
+    messageContent: 'Cadet Announcement: Registrations are now open for the InnovatMind Inter-House Robotics & Python AI Exhibition. Students from Grades 5 to 12 can submit their autonomous maze-runner project blueprints via the Student Portal.',
+    priority: 'ACADEMIC',
+    targetAudience: 'STUDENTS',
+    channels: ['PORTAL', 'PUSH'],
+    isEmergencyBanner: false,
+    sentAt: '2026-10-27T11:15:00.000Z',
+    authorName: 'STEM Faculty Cell',
+    deliveredCount: 420,
+    totalRecipients: 430,
+    openRate: 91.4,
+    status: 'PUBLISHED'
+  }
+];
+
 

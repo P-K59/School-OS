@@ -46,11 +46,30 @@ import Link from 'next/link';
 type ActiveViewTab = 'DASHBOARD' | 'LECTURES' | 'UTILITIES' | 'RESOURCES' | 'LEAVES';
 
 function SchoolAdminDashboardContent() {
-  const { activeSchool, currentUser: user, courses, enrollments, students, financials, attendance } = useAuth();
+  const { activeSchool, currentUser: user, courses, enrollments, students, financials, attendance, dataMode } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  const isDemo = dataMode === 'DEMO' && Boolean((activeSchool as any)?.isDemo || activeSchool?.id === 'sch-del-001' || activeSchool?.id === 'school-1');
+  const isFreshSchool = !isDemo && students.length === 0;
+
+  const totalStudentsDisplay = isDemo ? '1,248' : students.length.toLocaleString();
+  const newAdmissionsDisplay = isDemo ? '32' : students.filter(s => {
+    const created = new Date(s.createdAt || Date.now()).getTime();
+    const diff = Date.now() - created;
+    return diff <= 30 * 24 * 3600 * 1000;
+  }).length.toLocaleString();
+  const totalStaffDisplay = isDemo ? '86' : (activeSchool?.totalStaff || 1).toLocaleString();
+  const feeCollectedDisplay = isDemo ? '₹28.4L' : (financials?.totalCollected ? `₹${((financials.totalCollected) / 100000).toFixed(1)}L` : '₹0.0L');
+  const pendingFeesDisplay = isDemo ? '₹7.6L' : (financials?.totalOverdue ? `₹${((financials.totalOverdue) / 100000).toFixed(1)}L` : '₹0.0L');
+  const expensesDisplay = isDemo ? '₹12.3L' : '₹0.0L';
+
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('DASHBOARD');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Interactive AI Assistant Dialog State
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -142,6 +161,19 @@ function SchoolAdminDashboardContent() {
             
             {/* Top row: Greeting & Subtitle */}
             <div className="max-w-xl">
+              <div className="flex items-center gap-2 mb-2 flex-wrap" suppressHydrationWarning>
+                <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-indigo-600 text-white shadow-2xs" suppressHydrationWarning>
+                  {activeSchool.name}
+                </span>
+                {activeSchool.registrationId && (
+                  <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200" suppressHydrationWarning>
+                    Reg ID: {activeSchool.registrationId}
+                  </span>
+                )}
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100" suppressHydrationWarning>
+                  {activeSchool.schoolType} Board
+                </span>
+              </div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 Good Morning, Principal! 👋
               </h1>
@@ -150,7 +182,7 @@ function SchoolAdminDashboardContent() {
               </p>
               <div className="flex items-center gap-2 mt-2.5 text-slate-500 text-xs font-bold">
                 <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                <span>
+                <span suppressHydrationWarning>
                   {new Date().toLocaleDateString('en-US', {
                     weekday: 'long',
                     day: 'numeric',
@@ -198,12 +230,12 @@ function SchoolAdminDashboardContent() {
       {/* Sub-Navigation Tabs to retain all previously created modules */}
       <div className="bg-slate-100/90 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto scrollbar-none border border-slate-200/60">
         {[
-          { id: 'DASHBOARD', label: 'Executive 3D Dashboard', icon: BarChart3 },
-          { id: 'LECTURES', label: 'Daily Lecture Plan', icon: BookOpen },
-          { id: 'UTILITIES', label: 'Utility & Maintenance', icon: Zap },
-          { id: 'RESOURCES', label: 'Resource Planning', icon: Layers },
-          { id: 'LEAVES', label: 'Leave Approvals', icon: HeartHandshake, badge: '3' },
-        ].map(tab => {
+          { id: 'DASHBOARD', label: 'Executive 3D Dashboard', icon: BarChart3, enabled: true },
+          { id: 'LECTURES', label: 'Daily Lecture Plan', icon: BookOpen, enabled: activeSchool?.enabledModules?.academics !== false },
+          { id: 'UTILITIES', label: 'Utility & Maintenance', icon: Zap, enabled: activeSchool?.enabledModules?.utilities !== false },
+          { id: 'RESOURCES', label: 'Resource Planning', icon: Layers, enabled: activeSchool?.enabledModules?.resources !== false },
+          { id: 'LEAVES', label: 'Leave Approvals', icon: HeartHandshake, badge: '3', enabled: activeSchool?.enabledModules?.staff !== false },
+        ].filter(t => t.enabled).map(tab => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
           return (
@@ -242,6 +274,24 @@ function SchoolAdminDashboardContent() {
       {activeTab === 'DASHBOARD' && (
         <div className="space-y-6">
 
+          {/* Fresh Tenant Empty State Onboarding Banner */}
+          {mounted && isFreshSchool && !isDemo && (
+            <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
+                  Welcome to {activeSchool.name}! Fresh Portal Initialized
+                </h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Your institutional portal is freshly provisioned with 0 student and staff records. Start by admitting your first student or enrolling classes into InnovatMind STEM courses.
+                </p>
+              </div>
+              <Link href="/school/students?tab=admissions" className="btn-3d-primary px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm">
+                + New Admission
+              </Link>
+            </div>
+          )}
+
           {/* =========================================================================
               ROW 1: 6 Soft 3D KPI Cards with Colorful Pastel Icon Containers
              ========================================================================= */}
@@ -257,11 +307,11 @@ function SchoolAdminDashboardContent() {
                   Total Students
                 </span>
                 <div className="text-xl font-black text-slate-900 mt-0.5 leading-none">
-                  1,248
+                  {totalStudentsDisplay}
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-1">
                   <TrendingUp className="w-3 h-3" />
-                  <span>12%</span>
+                  <span>{isFreshSchool ? '0%' : '12%'}</span>
                 </div>
               </div>
             </Card>
@@ -276,11 +326,11 @@ function SchoolAdminDashboardContent() {
                   New Admissions
                 </span>
                 <div className="text-xl font-black text-slate-900 mt-0.5 leading-none">
-                  32
+                  {newAdmissionsDisplay}
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-1">
                   <TrendingUp className="w-3 h-3" />
-                  <span>18%</span>
+                  <span>{isFreshSchool ? '0%' : '18%'}</span>
                 </div>
               </div>
             </Card>
@@ -295,11 +345,11 @@ function SchoolAdminDashboardContent() {
                   Total Staff
                 </span>
                 <div className="text-xl font-black text-slate-900 mt-0.5 leading-none">
-                  86
+                  {totalStaffDisplay}
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-1">
                   <TrendingUp className="w-3 h-3" />
-                  <span>5%</span>
+                  <span>{isFreshSchool ? '0%' : '5%'}</span>
                 </div>
               </div>
             </Card>
@@ -314,11 +364,11 @@ function SchoolAdminDashboardContent() {
                   Fee Collected
                 </span>
                 <div className="text-xl font-black text-slate-900 mt-0.5 leading-none">
-                  ₹28.4L
+                  {feeCollectedDisplay}
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-1">
                   <TrendingUp className="w-3 h-3" />
-                  <span>22%</span>
+                  <span>{isFreshSchool ? '0%' : '22%'}</span>
                 </div>
               </div>
             </Card>
@@ -333,11 +383,11 @@ function SchoolAdminDashboardContent() {
                   Pending Fees
                 </span>
                 <div className="text-xl font-black text-slate-900 mt-0.5 leading-none">
-                  ₹7.6L
+                  {pendingFeesDisplay}
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-bold text-rose-600 mt-1">
                   <TrendingDown className="w-3 h-3" />
-                  <span>10%</span>
+                  <span>{isFreshSchool ? '0%' : '10%'}</span>
                 </div>
               </div>
             </Card>
@@ -352,11 +402,11 @@ function SchoolAdminDashboardContent() {
                   Monthly Expenses
                 </span>
                 <div className="text-xl font-black text-slate-900 mt-0.5 leading-none">
-                  ₹12.3L
+                  {expensesDisplay}
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-bold text-rose-600 mt-1">
                   <TrendingUp className="w-3 h-3" />
-                  <span>8%</span>
+                  <span>{isFreshSchool ? '0%' : '8%'}</span>
                 </div>
               </div>
             </Card>
@@ -417,7 +467,7 @@ function SchoolAdminDashboardContent() {
                     />
                   </svg>
                   <div className="absolute text-center">
-                    <span className="text-2xl font-black text-slate-900">92%</span>
+                    <span className="text-2xl font-black text-slate-900">{isFreshSchool ? '0%' : (isDemo ? '92%' : '100%')}</span>
                   </div>
                 </div>
 
@@ -428,21 +478,21 @@ function SchoolAdminDashboardContent() {
                       <span className="w-2.5 h-2.5 rounded-full bg-teal-600" />
                       <span className="text-slate-600 font-medium">Present</span>
                     </div>
-                    <span className="font-bold text-slate-900">1,149</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '1,149' : students.length.toLocaleString())}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
                       <span className="text-slate-600 font-medium">Absent</span>
                     </div>
-                    <span className="font-bold text-slate-900">78</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '78' : '0')}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                       <span className="text-slate-600 font-medium">Late</span>
                     </div>
-                    <span className="font-bold text-slate-900">21</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '21' : '0')}</span>
                   </div>
                 </div>
               </div>
@@ -460,29 +510,32 @@ function SchoolAdminDashboardContent() {
               <div className="space-y-4 my-auto">
                 <div className="flex items-baseline justify-between">
                   <div>
-                    <span className="text-2xl font-black text-slate-900">₹28.4L</span>
-                    <span className="text-xs text-slate-500 font-medium ml-1.5">of ₹36.0L</span>
+                    <span className="text-2xl font-black text-slate-900">{feeCollectedDisplay}</span>
+                    <span className="text-xs text-slate-500 font-medium ml-1.5">{isFreshSchool ? 'of ₹0.0L' : (isDemo ? 'of ₹36.0L' : `of ₹${(((financials?.totalBilled || 0)) / 100000).toFixed(1)}L`)}</span>
                   </div>
                   <span className="text-xs font-black text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
-                    78%
+                    {isFreshSchool ? '0%' : (isDemo ? '78%' : (financials?.totalBilled ? `${Math.round(((financials?.totalCollected || 0) / financials.totalBilled) * 100)}%` : '0%'))}
                   </span>
                 </div>
 
                 {/* Progress bar */}
                 <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden flex">
-                  <div className="bg-teal-500 h-full rounded-full transition-all" style={{ width: '78%' }} />
+                  <div
+                    className="bg-teal-500 h-full rounded-full transition-all"
+                    style={{ width: isFreshSchool ? '0%' : (isDemo ? '78%' : (financials?.totalBilled ? `${Math.min(100, Math.round(((financials?.totalCollected || 0) / financials.totalBilled) * 100))}%` : '0%')) }}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between text-xs pt-1">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
                     <span className="text-slate-500">Paid:</span>
-                    <span className="font-bold text-slate-900">28.4L</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L' : (isDemo ? '₹28.4L' : feeCollectedDisplay)}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                     <span className="text-slate-500">Pending:</span>
-                    <span className="font-bold text-slate-900">7.6L</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L' : (isDemo ? '₹7.6L' : pendingFeesDisplay)}</span>
                   </div>
                 </div>
               </div>
@@ -546,16 +599,16 @@ function SchoolAdminDashboardContent() {
                     Students in InnovatMind Courses
                   </h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xl font-black text-slate-900">862</span>
-                    <span className="text-[10px] font-bold text-emerald-600 flex items-center">
-                      <TrendingUp className="w-2.5 h-2.5 mr-0.5" /> 25%
+                    <span suppressHydrationWarning className="text-xl font-black text-slate-900">{isFreshSchool ? '0' : (isDemo ? '862' : enrollments.length.toLocaleString())}</span>
+                    <span suppressHydrationWarning className="text-[10px] font-bold text-emerald-600 flex items-center">
+                      <TrendingUp className="w-2.5 h-2.5 mr-0.5" /> {isFreshSchool ? '0%' : (isDemo ? '25%' : '0%')}
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Enrolled Students</span>
                 </div>
 
-                <div className="w-12 h-12 rounded-full border-4 border-teal-500 border-t-slate-100 flex items-center justify-center text-[11px] font-black text-slate-900 shrink-0">
-                  69%
+                <div suppressHydrationWarning className="w-12 h-12 rounded-full border-4 border-teal-500 border-t-slate-100 flex items-center justify-center text-[11px] font-black text-slate-900 shrink-0">
+                  {isFreshSchool ? '0%' : (isDemo ? '69%' : (enrollments.length > 0 ? '100%' : '0%'))}
                 </div>
               </div>
 
@@ -566,28 +619,28 @@ function SchoolAdminDashboardContent() {
                     <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
                     <span className="text-slate-600 font-medium">Computer Basics</span>
                   </div>
-                  <span className="font-bold text-slate-900">420</span>
+                  <span suppressHydrationWarning className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '420' : enrollments.filter(e => e.courseId?.includes('comp') || (e as any).courseName?.includes('Computer')).length.toString())}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5 text-purple-500" />
                     <span className="text-slate-600 font-medium">Coding & Programming</span>
                   </div>
-                  <span className="font-bold text-slate-900">368</span>
+                  <span suppressHydrationWarning className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '368' : enrollments.filter(e => e.courseId?.includes('code') || (e as any).courseName?.includes('Coding')).length.toString())}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-teal-500" />
                     <span className="text-slate-600 font-medium">Robotics</span>
                   </div>
-                  <span className="font-bold text-slate-900">286</span>
+                  <span suppressHydrationWarning className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '286' : enrollments.filter(e => e.courseId?.includes('robot') || (e as any).courseName?.includes('Robotics')).length.toString())}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-rose-500" />
                     <span className="text-slate-600 font-medium">AI & Future Tech</span>
                   </div>
-                  <span className="font-bold text-slate-900">192</span>
+                  <span suppressHydrationWarning className="font-bold text-slate-900">{isFreshSchool ? '0' : (isDemo ? '192' : enrollments.filter(e => e.courseId?.includes('ai') || (e as any).courseName?.includes('AI')).length.toString())}</span>
                 </div>
               </div>
             </Card>
@@ -719,17 +772,17 @@ function SchoolAdminDashboardContent() {
               </div>
 
               <div className="flex items-center gap-4 py-2">
-                {/* Donut with center text ₹36.0L */}
+                {/* Donut with center text */}
                 <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" stroke="#0284c7" strokeWidth="12" strokeDasharray="128 251.2" fill="transparent" />
-                    <circle cx="50" cy="50" r="40" stroke="#0d9488" strokeWidth="12" strokeDasharray="42 251.2" strokeDashoffset="-128" fill="transparent" />
-                    <circle cx="50" cy="50" r="40" stroke="#8b5cf6" strokeWidth="12" strokeDasharray="40 251.2" strokeDashoffset="-170" fill="transparent" />
-                    <circle cx="50" cy="50" r="40" stroke="#f59e0b" strokeWidth="12" strokeDasharray="23 251.2" strokeDashoffset="-210" fill="transparent" />
-                    <circle cx="50" cy="50" r="40" stroke="#ec4899" strokeWidth="12" strokeDasharray="18 251.2" strokeDashoffset="-233" fill="transparent" />
+                    <circle cx="50" cy="50" r="40" stroke="#0284c7" strokeWidth="12" strokeDasharray={isFreshSchool ? "0 251.2" : "128 251.2"} fill="transparent" />
+                    <circle cx="50" cy="50" r="40" stroke="#0d9488" strokeWidth="12" strokeDasharray={isFreshSchool ? "0 251.2" : "42 251.2"} strokeDashoffset="-128" fill="transparent" />
+                    <circle cx="50" cy="50" r="40" stroke="#8b5cf6" strokeWidth="12" strokeDasharray={isFreshSchool ? "0 251.2" : "40 251.2"} strokeDashoffset="-170" fill="transparent" />
+                    <circle cx="50" cy="50" r="40" stroke="#f59e0b" strokeWidth="12" strokeDasharray={isFreshSchool ? "0 251.2" : "23 251.2"} strokeDashoffset="-210" fill="transparent" />
+                    <circle cx="50" cy="50" r="40" stroke="#ec4899" strokeWidth="12" strokeDasharray={isFreshSchool ? "0 251.2" : "18 251.2"} strokeDashoffset="-233" fill="transparent" />
                   </svg>
                   <div className="absolute text-center leading-none">
-                    <span className="text-xs font-black text-slate-900 block">₹36.0L</span>
+                    <span className="text-xs font-black text-slate-900 block">{isFreshSchool ? '₹0.0L' : (isDemo ? '₹36.0L' : `₹${(((financials?.totalBilled || 0)) / 100000).toFixed(1)}L`)}</span>
                     <span className="text-[9px] text-slate-400 font-semibold mt-0.5 block">Total Fees</span>
                   </div>
                 </div>
@@ -741,35 +794,35 @@ function SchoolAdminDashboardContent() {
                       <span className="w-2 h-2 rounded-full bg-sky-600" />
                       <span className="text-slate-600">Tuition</span>
                     </div>
-                    <span className="font-bold text-slate-900">18.5L (51%)</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L (0%)' : '18.5L (51%)'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-teal-600" />
                       <span className="text-slate-600">Computer</span>
                     </div>
-                    <span className="font-bold text-slate-900">6.2L (17%)</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L (0%)' : '6.2L (17%)'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-purple-600" />
                       <span className="text-slate-600">Robotics</span>
                     </div>
-                    <span className="font-bold text-slate-900">5.8L (16%)</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L (0%)' : '5.8L (16%)'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-amber-500" />
                       <span className="text-slate-600">Transport</span>
                     </div>
-                    <span className="font-bold text-slate-900">3.4L (9%)</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L (0%)' : '3.4L (9%)'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-pink-500" />
                       <span className="text-slate-600">Other</span>
                     </div>
-                    <span className="font-bold text-slate-900">2.1L (7%)</span>
+                    <span className="font-bold text-slate-900">{isFreshSchool ? '₹0.0L (0%)' : '2.1L (7%)'}</span>
                   </div>
                 </div>
               </div>
@@ -1006,11 +1059,24 @@ function SchoolAdminDashboardContent() {
 }
 
 export default function SchoolAdminDashboard() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <AppShell>
-      <Suspense fallback={<div className="p-12 text-center text-slate-400 font-semibold">Loading Dashboard...</div>}>
-        <SchoolAdminDashboardContent />
-      </Suspense>
+      {!mounted ? (
+        <div className="min-h-[500px] flex items-center justify-center text-slate-500 text-sm font-medium">
+          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-3" />
+          Loading School Mission Control...
+        </div>
+      ) : (
+        <Suspense fallback={<div className="p-12 text-center text-slate-400 font-semibold">Loading Dashboard...</div>}>
+          <SchoolAdminDashboardContent />
+        </Suspense>
+      )}
     </AppShell>
   );
 }
