@@ -553,7 +553,13 @@ class ProductionDatabaseManager {
   }
 
   async updateSchool(schoolId: string, updates: Partial<School>): Promise<School> {
-    const idx = this.schools.findIndex(s => s.id === schoolId || s.registrationId === schoolId || s.code === schoolId);
+    const norm = schoolId ? schoolId.trim().toLowerCase() : '';
+    let idx = this.schools.findIndex(s => 
+      (s.id && s.id.toLowerCase() === norm) || 
+      (s.registrationId && s.registrationId.toLowerCase() === norm) || 
+      (s.code && s.code.toLowerCase() === norm) ||
+      (s.email && s.email.toLowerCase() === norm)
+    );
     if (idx === -1) {
       throw new Error(`School with id '${schoolId}' not found`);
     }
@@ -567,12 +573,111 @@ class ProductionDatabaseManager {
     return { ...this.schools[idx] };
   }
 
-  async approveSchool(identifier: string, reviewerId?: string): Promise<{ success: boolean; school: School }> {
-    const school = this.schools.find(s => 
-      s.id === identifier || 
-      s.registrationId === identifier || 
-      s.code === identifier
+  async approveSchool(identifier: string, reviewerId?: string, schoolSnapshot?: Partial<School>): Promise<{ success: boolean; school: School }> {
+    const norm = identifier ? identifier.trim().toLowerCase() : '';
+    
+    // 1. Search in-memory (case-insensitive across id, registrationId, code, email)
+    let school = this.schools.find(s => 
+      (s.id && s.id.toLowerCase() === norm) || 
+      (s.registrationId && s.registrationId.toLowerCase() === norm) || 
+      (s.code && s.code.toLowerCase() === norm) ||
+      (s.email && s.email.toLowerCase() === norm)
     );
+
+    // 2. Query Supabase if not found in serverDb memory
+    if (!school && supabase && typeof supabase.from === 'function') {
+      try {
+        const { data } = await supabase
+          .from('schools')
+          .select('*')
+          .or(`id.eq.${identifier},code.eq.${identifier},registration_id.eq.${identifier}`)
+          .maybeSingle();
+        if (data) {
+          school = {
+            id: data.id,
+            registrationId: data.registration_id || data.code,
+            code: data.code,
+            name: data.name,
+            schoolType: data.school_type || 'CBSE',
+            email: data.email,
+            phone: data.phone,
+            address: data.address || '',
+            city: data.city || 'Delhi',
+            state: data.state || 'Delhi',
+            country: data.country || 'India',
+            postalCode: data.postal_code || '110001',
+            isActive: Boolean(data.is_active),
+            isDemo: false,
+            totalStudents: data.total_students || 0,
+            totalStaff: data.total_staff || 1,
+            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            createdAt: data.created_at || new Date().toISOString(),
+            onboardingStatus: data.onboarding_status || 'PENDING_APPROVAL'
+          };
+          this.schools.push(school);
+        }
+      } catch {}
+    }
+
+    // 3. Fallback: adopt client-side school snapshot if not yet in server store
+    if (!school && schoolSnapshot && schoolSnapshot.name) {
+      const cityCode = (schoolSnapshot.city || 'SCH').slice(0, 3).toUpperCase();
+      const cleanCode = (schoolSnapshot.code && schoolSnapshot.code.trim())
+        ? schoolSnapshot.code.trim().toUpperCase()
+        : `SCH-${cityCode}-${Math.floor(100 + Math.random() * 900)}`;
+
+      const reviewedAt = new Date().toISOString();
+      const generatedLoginId = schoolSnapshot.adminCredentials?.loginId || schoolSnapshot.email || `admin@${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '')}.edu.in`;
+      const generatedTempPassword = schoolSnapshot.adminCredentials?.temporaryPassword || `${cleanCode.replace(/[^a-zA-Z0-9]/g, '')}#Admin${Math.floor(1000 + Math.random() * 9000)}`;
+
+      school = {
+        ...schoolSnapshot,
+        id: schoolSnapshot.id || identifier,
+        code: cleanCode,
+        name: schoolSnapshot.name.trim(),
+        isActive: true,
+        onboardingStatus: 'ACTIVE',
+        schoolType: schoolSnapshot.schoolType || 'CBSE',
+        city: schoolSnapshot.city || 'Delhi',
+        state: schoolSnapshot.state || 'Delhi',
+        country: schoolSnapshot.country || 'India',
+        postalCode: schoolSnapshot.postalCode || '110001',
+        address: schoolSnapshot.address || '',
+        phone: schoolSnapshot.phone || '',
+        email: schoolSnapshot.email || generatedLoginId,
+        isDemo: false,
+        totalStudents: schoolSnapshot.totalStudents || 0,
+        totalStaff: schoolSnapshot.totalStaff || 1,
+        enrolledCoursesCount: schoolSnapshot.enrolledCoursesCount || 0,
+        createdAt: schoolSnapshot.createdAt || reviewedAt,
+        approvalDetails: {
+          status: 'APPROVED',
+          submittedAt: schoolSnapshot.approvalDetails?.submittedAt || schoolSnapshot.createdAt || reviewedAt,
+          reviewedAt,
+          reviewedBy: reviewerId || 'Super Admin HQ'
+        },
+        adminCredentials: schoolSnapshot.adminCredentials || {
+          loginId: generatedLoginId,
+          email: schoolSnapshot.email || generatedLoginId,
+          temporaryPassword: generatedTempPassword,
+          generatedAt: reviewedAt,
+          provisionedBy: reviewerId || 'Super Admin HQ'
+        }
+      } as School;
+
+      this.schools.push(school);
+      this.saveToDisk();
+
+      await this.recordAuditEvent({
+        schoolId: school.id,
+        title: 'School Application Approved',
+        detail: `Institutional registration for '${school.name}' approved by ${reviewerId || 'Super Admin HQ'}. Tenant activated.`,
+        category: 'AUTH'
+      });
+
+      return { success: true, school };
+    }
+
     if (!school) {
       throw new Error(`School not found for identifier '${identifier}'`);
     }
@@ -634,12 +739,61 @@ class ProductionDatabaseManager {
     return { success: true, school: updated };
   }
 
-  async rejectSchool(identifier: string, reason?: string, reviewerId?: string): Promise<{ success: boolean; school: School }> {
-    const school = this.schools.find(s => 
-      s.id === identifier || 
-      s.registrationId === identifier || 
-      s.code === identifier
+  async rejectSchool(identifier: string, reason?: string, reviewerId?: string, schoolSnapshot?: Partial<School>): Promise<{ success: boolean; school: School }> {
+    const norm = identifier ? identifier.trim().toLowerCase() : '';
+    let school = this.schools.find(s => 
+      (s.id && s.id.toLowerCase() === norm) || 
+      (s.registrationId && s.registrationId.toLowerCase() === norm) || 
+      (s.code && s.code.toLowerCase() === norm) ||
+      (s.email && s.email.toLowerCase() === norm)
     );
+
+    if (!school && supabase && typeof supabase.from === 'function') {
+      try {
+        const { data } = await supabase
+          .from('schools')
+          .select('*')
+          .or(`id.eq.${identifier},code.eq.${identifier},registration_id.eq.${identifier}`)
+          .maybeSingle();
+        if (data) {
+          school = {
+            id: data.id,
+            registrationId: data.registration_id || data.code,
+            code: data.code,
+            name: data.name,
+            schoolType: data.school_type || 'CBSE',
+            email: data.email,
+            phone: data.phone,
+            address: data.address || '',
+            city: data.city || 'Delhi',
+            state: data.state || 'Delhi',
+            country: data.country || 'India',
+            postalCode: data.postal_code || '110001',
+            isActive: false,
+            isDemo: false,
+            totalStudents: data.total_students || 0,
+            totalStaff: data.total_staff || 1,
+            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            createdAt: data.created_at || new Date().toISOString(),
+            onboardingStatus: 'REJECTED'
+          };
+          this.schools.push(school);
+        }
+      } catch {}
+    }
+
+    if (!school && schoolSnapshot && schoolSnapshot.name) {
+      school = {
+        ...schoolSnapshot,
+        id: schoolSnapshot.id || identifier,
+        isActive: false,
+        onboardingStatus: 'REJECTED'
+      } as School;
+      this.schools.push(school);
+      this.saveToDisk();
+      return { success: true, school };
+    }
+
     if (!school) {
       throw new Error(`School not found for identifier '${identifier}'`);
     }
@@ -692,7 +846,13 @@ class ProductionDatabaseManager {
     reason?: string, 
     reviewerId?: string
   ): Promise<{ success: boolean; school: School }> {
-    const school = this.schools.find(s => s.id === schoolId);
+    const norm = schoolId ? schoolId.trim().toLowerCase() : '';
+    const school = this.schools.find(s => 
+      (s.id && s.id.toLowerCase() === norm) || 
+      (s.registrationId && s.registrationId.toLowerCase() === norm) || 
+      (s.code && s.code.toLowerCase() === norm) ||
+      (s.email && s.email.toLowerCase() === norm)
+    );
     if (!school) {
       throw new Error(`School with id '${schoolId}' not found`);
     }
@@ -701,7 +861,7 @@ class ProductionDatabaseManager {
     const reviewer = reviewerId || 'Super Admin HQ';
     const suspensionReason = reason || (suspend ? 'Administrative maintenance / fee review.' : 'Operational suspension lifted.');
 
-    const updated = await this.updateSchool(schoolId, {
+    const updated = await this.updateSchool(school.id, {
       isActive: !suspend,
       suspensionDetails: {
         isSuspended: suspend,
@@ -712,14 +872,14 @@ class ProductionDatabaseManager {
     });
 
     // Update associated School Admin profile status
-    const principalProfile = this.userProfiles.find(u => u.schoolId === schoolId && u.role === 'SCHOOL_ADMIN');
+    const principalProfile = this.userProfiles.find(u => u.schoolId === school.id && u.role === 'SCHOOL_ADMIN');
     if (principalProfile) {
       principalProfile.isActive = !suspend;
       principalProfile.status = suspend ? 'SUSPENDED' : 'ACTIVE';
     }
 
     await this.recordAuditEvent({
-      schoolId,
+      schoolId: school.id,
       title: suspend ? 'School Portal Suspended' : 'School Portal Reactivated',
       detail: suspend
         ? `Super Admin ${reviewer} suspended portal access for '${school.name}' (${school.code}). Reason: "${suspensionReason}".`
@@ -731,7 +891,13 @@ class ProductionDatabaseManager {
   }
 
   async recordWelcomeKitDispatched(schoolId: string, reviewerId?: string): Promise<{ success: boolean; school: School }> {
-    const school = this.schools.find(s => s.id === schoolId);
+    const norm = schoolId ? schoolId.trim().toLowerCase() : '';
+    const school = this.schools.find(s => 
+      (s.id && s.id.toLowerCase() === norm) || 
+      (s.registrationId && s.registrationId.toLowerCase() === norm) || 
+      (s.code && s.code.toLowerCase() === norm) ||
+      (s.email && s.email.toLowerCase() === norm)
+    );
     if (!school) {
       throw new Error(`School with id '${schoolId}' not found`);
     }
@@ -739,13 +905,13 @@ class ProductionDatabaseManager {
     const timestamp = new Date().toISOString();
     const dispatcher = reviewerId || 'Super Admin HQ';
 
-    const updated = await this.updateSchool(schoolId, {
+    const updated = await this.updateSchool(school.id, {
       welcomeKitDispatchedAt: timestamp,
       welcomeKitDispatchedBy: dispatcher
     });
 
     await this.recordAuditEvent({
-      schoolId,
+      schoolId: school.id,
       title: 'Welcome Kit Dispatched',
       detail: `Official onboarding Welcome Kit & credentials dispatched to '${school.name}' (${school.code}) by ${dispatcher}.`,
       category: 'AUTH'

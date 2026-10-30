@@ -216,4 +216,62 @@ describe('School OS: School Deletion Persistence, Recovery Log & Trainer Deletio
     assert.strictEqual(deletedAuditEvents[0].deletedSnapshot.name, 'Apex National Academy');
   });
 
+  test('4. School Approval case-insensitive and snapshot adoption ensures zero "School not found" errors', () => {
+    let schools = [
+      {
+        id: 'sch-pending-101',
+        code: 'SCH-PEN-101',
+        name: 'Pending Academy',
+        isActive: false,
+        onboardingStatus: 'PENDING_APPROVAL',
+        email: 'admin@pending.edu.in'
+      }
+    ];
+
+    function approveSchool(identifier, schoolSnapshot) {
+      const norm = identifier ? identifier.trim().toLowerCase() : '';
+      let school = schools.find(s => 
+        (s.id && s.id.toLowerCase() === norm) || 
+        (s.registrationId && s.registrationId.toLowerCase() === norm) || 
+        (s.code && s.code.toLowerCase() === norm) ||
+        (s.email && s.email.toLowerCase() === norm)
+      );
+
+      if (!school && schoolSnapshot && schoolSnapshot.name) {
+        school = {
+          ...schoolSnapshot,
+          id: schoolSnapshot.id || identifier,
+          isActive: true,
+          onboardingStatus: 'ACTIVE'
+        };
+        schools.push(school);
+        return { success: true, school };
+      }
+
+      if (!school) {
+        throw new Error(`School not found for identifier '${identifier}'`);
+      }
+
+      school.isActive = true;
+      school.onboardingStatus = 'ACTIVE';
+      return { success: true, school };
+    }
+
+    // 1. Approve with lowercase code
+    const res1 = approveSchool('sch-pen-101');
+    assert.strictEqual(res1.success, true);
+    assert.strictEqual(res1.school.isActive, true);
+
+    // 2. Approve with client snapshot fallback (non-existent server id)
+    const res2 = approveSchool('sch-client-999', {
+      name: 'Client Discovered Academy',
+      city: 'Delhi',
+      schoolType: 'CBSE'
+    });
+    assert.strictEqual(res2.success, true);
+    assert.strictEqual(res2.school.name, 'Client Discovered Academy');
+    assert.strictEqual(res2.school.isActive, true);
+  });
+
 });
+

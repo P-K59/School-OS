@@ -50,18 +50,18 @@ export async function PATCH(req: NextRequest) {
     if (roleAuth) return roleAuth;
 
     const body = await req.json();
-    const { schoolId, action, reason, ...updates } = body;
+    const { schoolId, action, reason, schoolSnapshot, ...updates } = body;
     if (!schoolId) {
       return NextResponse.json({ error: 'Missing required field: schoolId' }, { status: 400 });
     }
 
     if (action === 'approve') {
-      const result = await serverDb.approveSchool(schoolId, auth?.email || auth?.userId || 'Super Admin HQ');
+      const result = await serverDb.approveSchool(schoolId, auth?.email || auth?.userId || 'Super Admin HQ', schoolSnapshot);
       return NextResponse.json({ success: true, school: result.school, message: 'School approved and activated successfully' });
     }
 
     if (action === 'reject') {
-      const result = await serverDb.rejectSchool(schoolId, reason, auth?.email || auth?.userId || 'Super Admin HQ');
+      const result = await serverDb.rejectSchool(schoolId, reason, auth?.email || auth?.userId || 'Super Admin HQ', schoolSnapshot);
       return NextResponse.json({ success: true, school: result.school, message: 'School registration rejected' });
     }
 

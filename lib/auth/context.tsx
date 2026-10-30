@@ -1318,7 +1318,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const approveSchool = async (schoolId: string): Promise<{ success: boolean; school?: School; error?: string }> => {
     try {
-      const targetSchool = schools.find(s => s.id === schoolId || s.code === schoolId || s.registrationId === schoolId);
+      const norm = schoolId ? schoolId.trim().toLowerCase() : '';
+      const targetSchool = schools.find(s => 
+        s.id === schoolId || 
+        (s.id && s.id.toLowerCase() === norm) || 
+        (s.code && s.code.toLowerCase() === norm) || 
+        (s.registrationId && s.registrationId.toLowerCase() === norm)
+      );
       const effectiveId = targetSchool?.id || schoolId;
       let updatedSchool: School | undefined;
 
@@ -1330,7 +1336,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
-          body: JSON.stringify({ schoolId: effectiveId, action: 'approve' })
+          body: JSON.stringify({ 
+            schoolId: effectiveId, 
+            action: 'approve',
+            schoolSnapshot: targetSchool
+          })
         });
 
         if (!res.ok) {
@@ -1395,7 +1405,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const rejectSchool = async (schoolId: string, reason?: string): Promise<{ success: boolean; school?: School; error?: string }> => {
     try {
-      const targetSchool = schools.find(s => s.id === schoolId || s.code === schoolId || s.registrationId === schoolId);
+      const norm = schoolId ? schoolId.trim().toLowerCase() : '';
+      const targetSchool = schools.find(s => 
+        s.id === schoolId || 
+        (s.id && s.id.toLowerCase() === norm) || 
+        (s.code && s.code.toLowerCase() === norm) || 
+        (s.registrationId && s.registrationId.toLowerCase() === norm)
+      );
       const effectiveId = targetSchool?.id || schoolId;
       let updatedSchool: School | undefined;
 
@@ -1407,7 +1423,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
-          body: JSON.stringify({ schoolId: effectiveId, action: 'reject', reason })
+          body: JSON.stringify({ 
+            schoolId: effectiveId, 
+            action: 'reject', 
+            reason,
+            schoolSnapshot: targetSchool
+          })
         });
 
         if (!res.ok) {
