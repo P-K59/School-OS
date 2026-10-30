@@ -3,7 +3,7 @@
  * Supports Google Drive preview/embed streaming and provides a clean abstraction for future CDN migration.
  */
 
-import { VideoProviderType } from '../types';
+import { VideoProviderType } from '../types/index';
 
 export interface VideoPlaybackMetadata {
   provider: VideoProviderType;
