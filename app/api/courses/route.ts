@@ -11,6 +11,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const courseId = searchParams.get('courseId');
     const analytics = searchParams.get('analytics');
+    const curriculum = searchParams.get('curriculum');
+
+    if (courseId && curriculum === 'true') {
+      const lectures = await serverDb.getCourseCurriculum(courseId);
+      return NextResponse.json({ courseId, lectures });
+    }
 
     if (courseId && analytics === 'true') {
       const data = await serverDb.getCourseAnalytics(courseId);
@@ -43,11 +49,21 @@ export async function POST(req: NextRequest) {
     if (roleAuth) return roleAuth;
 
     const body = await req.json();
-    const { action, courseId, ...courseData } = body;
+    const { action, courseId, folderId, folderName, grade, lectures, ...courseData } = body;
 
     if (action === 'duplicate' && courseId) {
       const duplicated = await serverDb.duplicateCourse(courseId);
       return NextResponse.json({ success: true, course: duplicated, message: 'Course duplicated successfully' }, { status: 201 });
+    }
+
+    if (action === 'map_drive_folder' && courseId && folderId) {
+      const result = await serverDb.mapDriveFolderToCourse(courseId, folderId, folderName);
+      return NextResponse.json({ success: true, course: result.course, mappedCount: result.mappedCount, message: `Successfully mapped Google Drive folder to all 30 lectures` });
+    }
+
+    if (action === 'bulk_update_lectures' && courseId && Array.isArray(lectures)) {
+      const updatedCourse = await serverDb.bulkUpdateCourseLectures(courseId, lectures);
+      return NextResponse.json({ success: true, course: updatedCourse, message: `Successfully updated ${lectures.length} curriculum lectures` });
     }
 
     const newCourse = await serverDb.createCourse(courseData);

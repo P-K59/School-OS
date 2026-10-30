@@ -24,10 +24,15 @@ import {
   BulkEnrollmentBatch,
   UserProfile,
   BillingBasis,
-  SchoolOnboardingStage
+  SchoolOnboardingStage,
+  CurriculumLecture,
+  StudentLectureJourneyState
 } from '../types';
 import { initialWorkingRealSchool, nirmaanOrgSchool, initialTrainers } from './mock-data';
 import { generateUniqueRegistrationId } from '../supabase/service';
+import { generate30LectureCurriculum } from '../courses/curriculum-generator';
+import { SchedulingEngine, StudentJourneyScheduleResult } from '../learning/scheduling-engine';
+import { LearningJourneyOrchestrator } from '../learning/journey-orchestrator';
 
 // Baseline production tenant records (clean institutional entities, never mock demo users)
 const PROD_SEED_SCHOOLS: School[] = [initialWorkingRealSchool, nirmaanOrgSchool];
@@ -35,48 +40,66 @@ const PROD_SEED_SCHOOLS: School[] = [initialWorkingRealSchool, nirmaanOrgSchool]
 const PROD_SEED_COURSES: Course[] = [
   {
     id: 'crs-stem-101',
+    code: 'CRS-COD-101',
     title: 'Python & AI Foundations',
     slug: 'python-ai-foundations',
     description: 'Foundational algorithmic problem solving, Python programming syntax, and introductory machine learning concepts.',
     category: 'Coding',
     minGrade: 6,
     maxGrade: 10,
+    targetGrades: ['Grade 6', 'Grade 7', 'Grade 8'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80',
     isPublished: true,
-    totalModules: 12,
-    totalLessons: 36,
+    status: 'PUBLISHED',
+    version: 'v1.0',
+    totalModules: 6,
+    totalLessons: 30,
     difficulty: 'Beginner',
-    pricePerStudent: 999
+    pricePerStudent: 999,
+    unlockPolicy: 'HYBRID_SCHEDULE_AND_COMPLETION',
+    curriculumLectures: generate30LectureCurriculum({ grade: 6, courseTitle: 'Python & AI Foundations', unlockPolicy: 'HYBRID_SCHEDULE_AND_COMPLETION' })
   },
   {
     id: 'crs-stem-102',
+    code: 'CRS-ROB-102',
     title: 'Robotics & Microcontroller Engineering',
     slug: 'robotics-microcontroller-engineering',
     description: 'Hardware circuit design, Arduino microcontroller programming, actuator controls, and sensor integration.',
     category: 'Robotics',
     minGrade: 6,
     maxGrade: 12,
+    targetGrades: ['Grade 7', 'Grade 8', 'Grade 9'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&auto=format&fit=crop&q=80',
     isPublished: true,
-    totalModules: 10,
+    status: 'PUBLISHED',
+    version: 'v1.0',
+    totalModules: 6,
     totalLessons: 30,
     difficulty: 'Intermediate',
-    pricePerStudent: 1499
+    pricePerStudent: 1499,
+    unlockPolicy: 'HYBRID_SCHEDULE_AND_COMPLETION',
+    curriculumLectures: generate30LectureCurriculum({ grade: 7, courseTitle: 'Robotics & Microcontroller Engineering', unlockPolicy: 'HYBRID_SCHEDULE_AND_COMPLETION' })
   },
   {
     id: 'crs-stem-103',
+    code: 'CRS-IOT-103',
     title: 'Autonomous Mobile Rovers & IoT',
     slug: 'autonomous-rovers-iot',
     description: 'Autonomous navigation algorithms, ultrasonic distance mapping, and cloud IoT telemetry.',
     category: 'IoT',
     minGrade: 8,
     maxGrade: 12,
+    targetGrades: ['Grade 8', 'Grade 9', 'Grade 10'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1563770660941-20978e870e26?w=600&auto=format&fit=crop&q=80',
     isPublished: true,
-    totalModules: 14,
-    totalLessons: 42,
+    status: 'PUBLISHED',
+    version: 'v1.0',
+    totalModules: 6,
+    totalLessons: 30,
     difficulty: 'Advanced',
-    pricePerStudent: 1899
+    pricePerStudent: 1899,
+    unlockPolicy: 'HYBRID_SCHEDULE_AND_COMPLETION',
+    curriculumLectures: generate30LectureCurriculum({ grade: 8, courseTitle: 'Autonomous Mobile Rovers & IoT', unlockPolicy: 'HYBRID_SCHEDULE_AND_COMPLETION' })
   }
 ];
 
@@ -1477,6 +1500,15 @@ class ProductionDatabaseManager {
 
   async createCourse(data: Omit<Course, 'id' | 'createdAt'>): Promise<Course> {
     const courseCode = data.code || `CRS-${(data.category || 'STEM').slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+    const curriculumLectures = data.curriculumLectures && data.curriculumLectures.length > 0
+      ? data.curriculumLectures
+      : generate30LectureCurriculum({
+          grade: data.minGrade || 6,
+          courseTitle: data.title,
+          unlockPolicy: data.unlockPolicy || 'HYBRID_SCHEDULE_AND_COMPLETION',
+          defaultVideoProvider: 'GOOGLE_DRIVE'
+        });
+
     const newCourse: Course = {
       ...data,
       id: `crs-${Date.now().toString().slice(-6)}`,
@@ -1484,6 +1516,10 @@ class ProductionDatabaseManager {
       status: data.status || 'PUBLISHED',
       isPublished: data.isPublished !== false,
       isArchived: false,
+      version: data.version || 'v1.0',
+      totalLessons: curriculumLectures.length,
+      unlockPolicy: data.unlockPolicy || 'HYBRID_SCHEDULE_AND_COMPLETION',
+      curriculumLectures,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1635,6 +1671,314 @@ class ProductionDatabaseManager {
       averageQuizScore: avgQuizScore,
       pricingTiersCount: this.pricingRules.filter(p => p.courseId === course.id).length
     };
+  }
+
+  // ==========================================
+  // 5.1 CURRICULUM STUDIO: 30-LECTURE MANAGEMENT & GOOGLE DRIVE MAPPING
+  // ==========================================
+  async getCourseCurriculum(courseId: string): Promise<CurriculumLecture[]> {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+    if (!course.curriculumLectures || course.curriculumLectures.length === 0) {
+      course.curriculumLectures = generate30LectureCurriculum({
+        grade: course.minGrade || 6,
+        courseTitle: course.title,
+        unlockPolicy: course.unlockPolicy || 'HYBRID_SCHEDULE_AND_COMPLETION',
+        defaultVideoProvider: 'GOOGLE_DRIVE'
+      });
+      this.saveToDisk();
+    }
+    return course.curriculumLectures;
+  }
+
+  async bulkUpdateCourseLectures(courseId: string, lectures: CurriculumLecture[]): Promise<Course> {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+    course.curriculumLectures = lectures;
+    course.totalLessons = lectures.length;
+    course.updatedAt = new Date().toISOString();
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Course Curriculum Updated',
+      detail: `Super Admin bulk updated all ${lectures.length} lectures for '${course.title}'.`,
+      category: 'STEM'
+    });
+
+    return course;
+  }
+
+  async mapDriveFolderToCourse(
+    courseId: string,
+    folderId: string,
+    folderName?: string
+  ): Promise<{ success: boolean; course: Course; mappedCount: number }> {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+
+    if (!course.curriculumLectures || course.curriculumLectures.length === 0) {
+      course.curriculumLectures = generate30LectureCurriculum({
+        grade: course.minGrade || 6,
+        courseTitle: course.title,
+        unlockPolicy: course.unlockPolicy || 'HYBRID_SCHEDULE_AND_COMPLETION',
+        defaultVideoProvider: 'GOOGLE_DRIVE'
+      });
+    }
+
+    const cleanFolderId = (folderId || '1InnovatMindDriveFolder').trim();
+    const mappedVideos: Array<{
+      lectureNumber: number;
+      driveFileId: string;
+      fileName: string;
+      embedUrl: string;
+    }> = [];
+
+    // Map each of the 30 lectures to Google Drive format
+    course.curriculumLectures.forEach(l => {
+      const fileId = `${cleanFolderId}_LEC_${String(l.lectureNumber).padStart(2, '0')}`;
+      const embedUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+      l.videoProvider = 'GOOGLE_DRIVE';
+      l.videoRef = embedUrl;
+      if (!l.videoMetadata) l.videoMetadata = {};
+      l.videoMetadata.driveWebViewLink = `https://drive.google.com/file/d/${fileId}/view`;
+      mappedVideos.push({
+        lectureNumber: l.lectureNumber,
+        driveFileId: fileId,
+        fileName: l.videoMetadata.fileName || `Lecture_${l.lectureNumber}.mp4`,
+        embedUrl
+      });
+    });
+
+    course.driveConfig = {
+      folderId: cleanFolderId,
+      folderName: folderName || `Curriculum Drive Folder (${cleanFolderId})`,
+      connectedAt: new Date().toISOString(),
+      mappedVideosCount: mappedVideos.length,
+      mappedVideos
+    };
+
+    this.saveToDisk();
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Google Drive Videos Mapped',
+      detail: `Super Admin mapped Drive folder '${cleanFolderId}' to all 30 lectures of '${course.title}'.`,
+      category: 'STEM'
+    });
+
+    return { success: true, course, mappedCount: mappedVideos.length };
+  }
+
+  // ==========================================
+  // 5.2 MOBILE-FIRST STUDENT LEARNING JOURNEY ENGINE
+  // ==========================================
+  async getStudentActiveLearningJourney(studentId: string, courseId?: string) {
+    const student = this.students.find(s => s.id === studentId || s.credentials?.loginId === studentId);
+    if (!student) throw new Error(`Student with ID '${studentId}' not found.`);
+
+    // Find student enrollment
+    let enrollment = this.courseEnrollments.find(e => e.studentId === student.id && (!courseId || e.courseId === courseId));
+    if (!enrollment && this.courses.length > 0) {
+      // Auto-enroll student into primary course if not enrolled
+      const primaryCourse = this.courses[0];
+      enrollment = {
+        id: `enr-${Date.now()}`,
+        studentId: student.id,
+        studentName: `${student.firstName} ${student.lastName}`.trim(),
+        studentEmail: student.email,
+        studentLoginId: student.credentials?.loginId || student.admissionNumber,
+        admissionNumber: student.admissionNumber,
+        schoolId: student.schoolId,
+        schoolName: 'Partner Academy',
+        courseId: primaryCourse.id,
+        courseTitle: primaryCourse.title,
+        gradeName: student.gradeName,
+        sectionName: student.sectionName,
+        enrolledAt: new Date().toISOString(),
+        progressPercentage: 0,
+        completedLessons: 0,
+        totalLessons: 30,
+        lastActiveAt: new Date().toISOString(),
+        quizScoreAverage: 0,
+        status: 'ACTIVE',
+        currentModule: 'Unit 1: The Magic of Computers',
+        journeyStates: {}
+      };
+      this.courseEnrollments.push(enrollment);
+    }
+
+    if (!enrollment) throw new Error('No active course enrollment found for student.');
+
+    const course = await this.getCourseById(enrollment.courseId);
+    if (!course) throw new Error(`Course '${enrollment.courseId}' not found.`);
+
+    if (!course.curriculumLectures || course.curriculumLectures.length === 0) {
+      course.curriculumLectures = generate30LectureCurriculum({
+        grade: course.minGrade || 6,
+        courseTitle: course.title,
+        unlockPolicy: course.unlockPolicy || 'HYBRID_SCHEDULE_AND_COMPLETION',
+        defaultVideoProvider: 'GOOGLE_DRIVE'
+      });
+    }
+
+    if (!enrollment.journeyStates) enrollment.journeyStates = {};
+
+    const schedule = SchedulingEngine.resolveStudentLearningJourney(
+      course.curriculumLectures,
+      enrollment.journeyStates,
+      {
+        enrollmentStartDate: enrollment.enrolledAt,
+        schoolTimezone: 'Asia/Kolkata'
+      },
+      course.unlockPolicy || 'HYBRID_SCHEDULE_AND_COMPLETION'
+    );
+
+    // Sync enrollment progress stats
+    enrollment.completedLessons = schedule.completedLecturesCount;
+    enrollment.progressPercentage = schedule.overallProgressPercentage;
+    if (schedule.activeLecture) {
+      enrollment.activeLectureNumber = schedule.activeLecture.lectureNumber;
+      enrollment.currentLectureId = schedule.activeLecture.id;
+      enrollment.currentModule = schedule.activeLecture.moduleName;
+    }
+    this.saveToDisk();
+
+    // Security: Filter out future video references. Only return active lecture!
+    const sanitizedActiveLecture = schedule.activeLecture ? { ...schedule.activeLecture } : null;
+
+    return {
+      student: {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`.trim(),
+        admissionNumber: student.admissionNumber,
+        grade: student.gradeName,
+        section: student.sectionName,
+        xp: student.currentXp,
+        level: student.currentLevel,
+        streak: student.currentStreak || 1
+      },
+      enrollment,
+      course: {
+        id: course.id,
+        title: course.title,
+        code: course.code,
+        category: course.category,
+        totalLessons: course.totalLessons,
+        unlockPolicy: course.unlockPolicy
+      },
+      schedule: {
+        totalLectures: schedule.totalLectures,
+        completedLecturesCount: schedule.completedLecturesCount,
+        unlockedLecturesCount: schedule.unlockedLecturesCount,
+        overallProgressPercentage: schedule.overallProgressPercentage,
+        isCourseCompleted: schedule.isCourseCompleted,
+        nextScheduledUnlock: schedule.nextScheduledUnlock
+      },
+      activeLecture: sanitizedActiveLecture,
+      activeLectureState: schedule.activeLectureState
+    };
+  }
+
+  async updateStudentVideoProgress(
+    studentId: string,
+    courseId: string,
+    lectureNumber: number,
+    watchedSeconds: number,
+    totalDurationSeconds: number
+  ) {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+    const lectures = course.curriculumLectures || [];
+    const lecture = lectures.find(l => l.lectureNumber === lectureNumber);
+    if (!lecture) throw new Error(`Lecture ${lectureNumber} not found.`);
+
+    const enrollment = this.courseEnrollments.find(e => e.studentId === studentId && e.courseId === courseId);
+    if (!enrollment) throw new Error(`Enrollment not found.`);
+    if (!enrollment.journeyStates) enrollment.journeyStates = {};
+
+    const currentState = LearningJourneyOrchestrator.getOrCreateState(lecture, enrollment.journeyStates[lectureNumber]);
+    const result = LearningJourneyOrchestrator.processVideoWatch(lecture, currentState, {
+      lectureNumber,
+      watchedSeconds,
+      totalDurationSeconds
+    });
+
+    enrollment.journeyStates[lectureNumber] = result.journeyState;
+    this.saveToDisk();
+
+    return result;
+  }
+
+  async submitStudentQuiz(
+    studentId: string,
+    courseId: string,
+    lectureNumber: number,
+    answers: Record<string, any>
+  ) {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+    const lectures = course.curriculumLectures || [];
+    const lecture = lectures.find(l => l.lectureNumber === lectureNumber);
+    if (!lecture) throw new Error(`Lecture ${lectureNumber} not found.`);
+
+    const enrollment = this.courseEnrollments.find(e => e.studentId === studentId && e.courseId === courseId);
+    if (!enrollment) throw new Error(`Enrollment not found.`);
+    if (!enrollment.journeyStates) enrollment.journeyStates = {};
+
+    const currentState = LearningJourneyOrchestrator.getOrCreateState(lecture, enrollment.journeyStates[lectureNumber]);
+    const result = LearningJourneyOrchestrator.evaluateQuizSubmission(lecture, currentState, {
+      lectureNumber,
+      answers
+    });
+
+    enrollment.journeyStates[lectureNumber] = result.journeyState;
+    this.saveToDisk();
+
+    return result;
+  }
+
+  async submitStudentGame(
+    studentId: string,
+    courseId: string,
+    lectureNumber: number,
+    score: number
+  ) {
+    const course = await this.getCourseById(courseId);
+    if (!course) throw new Error(`Course '${courseId}' not found.`);
+    const lectures = course.curriculumLectures || [];
+    const lecture = lectures.find(l => l.lectureNumber === lectureNumber);
+    if (!lecture) throw new Error(`Lecture ${lectureNumber} not found.`);
+
+    const enrollment = this.courseEnrollments.find(e => e.studentId === studentId && e.courseId === courseId);
+    if (!enrollment) throw new Error(`Enrollment not found.`);
+    if (!enrollment.journeyStates) enrollment.journeyStates = {};
+
+    const currentState = LearningJourneyOrchestrator.getOrCreateState(lecture, enrollment.journeyStates[lectureNumber]);
+    const result = LearningJourneyOrchestrator.processGameCompletion(lecture, currentState, {
+      lectureNumber,
+      score
+    });
+
+    enrollment.journeyStates[lectureNumber] = result.journeyState;
+
+    // Award XP to student record if new XP was unlocked
+    if (result.xpAwardedThisStep > 0) {
+      const student = this.students.find(s => s.id === studentId);
+      if (student) {
+        student.currentXp += result.xpAwardedThisStep;
+        student.currentLevel = Math.max(1, Math.floor(student.currentXp / 500) + 1);
+        student.currentStreak = (student.currentStreak || 0) + 1;
+        result.newTotalXp = student.currentXp;
+      }
+      enrollment.completedLessons = Object.values(enrollment.journeyStates).filter(s => s.journeyCompleted).length;
+      enrollment.progressPercentage = Math.round((enrollment.completedLessons / 30) * 100);
+      if (enrollment.progressPercentage >= 100) enrollment.status = 'COMPLETED';
+    }
+
+    this.saveToDisk();
+
+    return result;
   }
 
   async removeSchoolCourseAssignment(assignmentId: string): Promise<{ success: boolean; assignment: SchoolCourseAssignment }> {

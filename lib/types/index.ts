@@ -282,6 +282,121 @@ export interface CourseModule {
   lessons: CourseLesson[];
 }
 
+export type VideoProviderType = 'GOOGLE_DRIVE' | 'CLOUDFLARE_STREAM' | 'CUSTOM_CDN' | 'EMBED';
+export type SchedulePolicy = 'DAILY' | 'WEEKLY' | 'CUSTOM';
+export type UnlockPolicy = 'SCHEDULE_BASED' | 'SEQUENTIAL' | 'HYBRID_SCHEDULE_AND_COMPLETION';
+export type GameType = 'HARDWARE_MATCH' | 'CODING_SEQUENCE' | 'MEMORY_CARDS' | 'BUG_HUNTER' | 'LOGIC_CIRCUIT' | 'INTERACTIVE_SIMULATION';
+export type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'MATCH' | 'CODE_OUTPUT' | 'ORDERING';
+
+export interface QuizQuestion {
+  id: string;
+  type: QuestionType;
+  prompt: string;
+  options?: string[];
+  pairs?: Array<{ left: string; right: string }>;
+  correctAnswer: string | number | string[];
+  explanation: string;
+  codeSnippet?: string;
+  hint?: string;
+}
+
+export interface LectureQuiz {
+  id: string;
+  title: string;
+  description?: string;
+  passingPercentage: number; // e.g. 70%
+  timeLimitSeconds?: number;
+  questionsCount: number;
+  isMandatory: boolean;
+  questions: QuizQuestion[];
+}
+
+export interface LectureGame {
+  id: string;
+  type: GameType;
+  title: string;
+  instructions: string;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  config: Record<string, any>;
+  xpBonus: number;
+}
+
+export interface LectureBadgeReward {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+export interface CurriculumLecture {
+  id: string;
+  lectureNumber: number; // 1 to 30
+  title: string;
+  shortDescription: string;
+  learningObjectives: string[];
+  moduleName: string;
+  topic: string;
+  gradeLevel?: number | string;
+  estimatedDurationMinutes: number;
+  videoProvider: VideoProviderType;
+  videoRef: string; // Google Drive File ID, embed link, or stream URL
+  videoMetadata?: {
+    fileName?: string;
+    durationSeconds?: number;
+    resolution?: string;
+    thumbnailUrl?: string;
+    driveWebViewLink?: string;
+  };
+  videoCompletionThresholdPercent: number; // default 80
+  quiz?: LectureQuiz;
+  game?: LectureGame;
+  releaseSchedule: {
+    type: SchedulePolicy;
+    dayOffset?: number; // 1 to 30 days from course start
+    customDate?: string;
+    customTime?: string; // e.g. "09:00"
+  };
+  unlockPolicy: UnlockPolicy;
+  status: 'DRAFT' | 'READY';
+  xpReward: number; // default 50
+  badgeReward?: LectureBadgeReward;
+}
+
+export interface CourseDriveConfig {
+  folderId?: string;
+  folderName?: string;
+  connectedAt?: string;
+  accountEmail?: string;
+  mappedVideosCount?: number;
+  mappedVideos?: Array<{
+    lectureNumber: number;
+    driveFileId: string;
+    fileName: string;
+    embedUrl: string;
+  }>;
+}
+
+export interface StudentLectureJourneyState {
+  lectureId: string;
+  lectureNumber: number;
+  isUnlocked: boolean;
+  unlockReason?: string;
+  scheduledUnlockAt?: string;
+  videoWatchedSeconds: number;
+  videoWatchPercentage: number;
+  videoCompleted: boolean;
+  quizUnlocked: boolean;
+  quizCompleted: boolean;
+  quizScore?: number;
+  quizAttempts: number;
+  gameUnlocked: boolean;
+  gameCompleted: boolean;
+  gameScore?: number;
+  xpAwarded: boolean;
+  journeyCompleted: boolean;
+  completedAt?: string;
+}
+
 export interface Course {
   id: string;
   code?: string;
@@ -298,6 +413,7 @@ export interface Course {
   isPublished: boolean;
   isArchived?: boolean;
   status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  version?: string; // e.g. "v1.0"
   totalModules: number;
   totalLessons: number;
   estimatedDurationHours?: number;
@@ -306,7 +422,11 @@ export interface Course {
   isFreeCourse?: boolean;
   prerequisites?: string;
   learningOutcomes?: string[];
+  unlockPolicy?: UnlockPolicy;
+  defaultScheduleType?: SchedulePolicy;
   modules?: CourseModule[];
+  curriculumLectures?: CurriculumLecture[]; // Grade-wise 30-Lecture sequence
+  driveConfig?: CourseDriveConfig;
   creatorName?: string;
   creatorRole?: string;
   createdAt?: string;
@@ -362,6 +482,9 @@ export interface StudentEnrollment {
   accountStatus?: AccountStatus;
   activationStatus?: 'ACTIVE' | 'PENDING_ACTIVATION' | 'FAILED';
   priceSnapshot?: EnrollmentPriceSnapshot;
+  activeLectureNumber?: number; // 1 to 30
+  currentLectureId?: string;
+  journeyStates?: Record<number, StudentLectureJourneyState>;
 }
 
 export interface BulkEnrollmentBatch {

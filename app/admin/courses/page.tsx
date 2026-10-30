@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { useAuth } from '@/lib/auth/context';
 import { Course, SchoolCourseAssignment, CourseModule, CourseLesson, CourseActivity, CourseAssessment, LessonType } from '@/lib/types';
 import { isRealSchool } from '@/lib/db/mock-data';
+import { CourseStudioModal } from '@/components/courses/course-studio-modal';
 import {
   BookOpen,
   Search,
@@ -81,6 +82,7 @@ export default function SuperAdminCourseCatalogPage() {
   const [newPriceValue, setNewPriceValue] = useState<number>(999);
 
   // New Lifecycle & Management Modal States
+  const [selectedCourseForStudio, setSelectedCourseForStudio] = useState<Course | null>(null);
   const [selectedCourseForEdit, setSelectedCourseForEdit] = useState<Course | null>(null);
   const [selectedCourseForDelete, setSelectedCourseForDelete] = useState<Course | null>(null);
   const [selectedCourseForCurriculum, setSelectedCourseForCurriculum] = useState<Course | null>(null);
@@ -511,6 +513,18 @@ export default function SuperAdminCourseCatalogPage() {
     }));
   };
 
+  const handleBulkUpdateLectures = async (courseId: string, lectures: any[]) => {
+    const res = await fetch('/api/courses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN', 'x-user-id': 'usr-super-admin-root' },
+      body: JSON.stringify({ action: 'bulk_update_lectures', courseId, lectures })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update lectures');
+    }
+  };
+
   return (
     <AppShell>
       <div className="space-y-6 pb-12 animate-fade-in">
@@ -528,15 +542,25 @@ export default function SuperAdminCourseCatalogPage() {
                 InnovatMind Course Catalog
               </h1>
               <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs">
-                31 Active Courses
+                30-Lecture Studio Active
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
-              Central curriculum repository, base pricing tiers, syllabus modules, and multi-school assignment command.
+              Central curriculum repository, base pricing tiers, 30-lecture studio, and multi-school assignment command.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => {
+                if (courses.length > 0) setSelectedCourseForStudio(courses[0]);
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-black text-indigo-700 shadow-xs transition-all cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-indigo-600" />
+              <span>Course Studio (30 Lectures &amp; Drive)</span>
+            </button>
+
             <Link
               href="/admin/pricing"
               className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-xs transition-all"
@@ -854,11 +878,20 @@ export default function SuperAdminCourseCatalogPage() {
                   <div className="flex items-center justify-between gap-1.5">
                     <button
                       onClick={() => handleOpenCurriculum(course)}
-                      className="flex-1 py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors"
+                      className="py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors"
                       title="Open Curriculum & Lesson Builder"
                     >
                       <Layers className="w-3.5 h-3.5" />
-                      <span>Curriculum Builder</span>
+                      <span>Modules</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedCourseForStudio(course)}
+                      className="py-1.5 px-2.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      title="Open 30 Lectures & Google Drive Studio"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Studio (30)</span>
                     </button>
 
                     <div className="flex items-center gap-1">
@@ -1866,6 +1899,19 @@ export default function SuperAdminCourseCatalogPage() {
             </div>
           );
         })()}
+
+        {/* Modal 8: Course Studio (30 Lectures & Google Drive Mapping) */}
+        {selectedCourseForStudio && (
+          <CourseStudioModal
+            course={selectedCourseForStudio}
+            isOpen={Boolean(selectedCourseForStudio)}
+            onClose={() => setSelectedCourseForStudio(null)}
+            onSaveCourse={async (updates) => {
+              await updateCourse(selectedCourseForStudio.id, updates);
+            }}
+            onBulkUpdateLectures={handleBulkUpdateLectures}
+          />
+        )}
 
       </div>
     </AppShell>

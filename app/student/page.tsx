@@ -10,6 +10,7 @@ import { DragAndDropCodingGame } from '@/components/student/drag-and-drop-game';
 import { QuizBattleModal } from '@/components/student/quiz-battle-modal';
 import { AiMentorDialog } from '@/components/student/ai-mentor-dialog';
 import { LearningIslandDrawer, ISLANDS_DATA, IslandInfo } from '@/components/student/learning-island-drawer';
+import { StudentMobilePortal } from '@/components/student/student-mobile-portal';
 import {
   Sparkles,
   Trophy,
@@ -108,6 +109,71 @@ function GamifiedStudentPortal() {
   // Quest states
   const [completedQuests, setCompletedQuests] = useState<string[]>(isActualStudent ? [] : ['quest-1']);
   const [activeLeaderboardTab, setActiveLeaderboardTab] = useState<'CLASS' | 'SCHOOL'>('CLASS');
+
+  // Mobile-First 30-Lecture Learning Portal State
+  const [viewMode, setViewMode] = useState<'MOBILE_PORTAL' | 'CADET_CAMPUS'>('MOBILE_PORTAL');
+  const [journeyData, setJourneyData] = useState<any>(null);
+  const [isLoadingJourney, setIsLoadingJourney] = useState(true);
+
+  const fetchJourney = async () => {
+    try {
+      const studentId = currentUser?.studentId || currentUser?.id || 'stud-1';
+      const res = await fetch(`/api/courses/learning-journey?studentId=${studentId}`, {
+        headers: {
+          'x-user-role': 'STUDENT',
+          'x-user-id': studentId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setJourneyData(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch learning journey', err);
+    } finally {
+      setIsLoadingJourney(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchJourney();
+  }, [currentUser?.id]);
+
+  const handleVideoProgress = async (watchedSeconds: number, totalDuration: number) => {
+    const studentId = currentUser?.studentId || currentUser?.id || 'stud-1';
+    const courseId = journeyData?.course?.id || 'crs-stem-101';
+    const lectureNumber = journeyData?.activeLecture?.lectureNumber || 1;
+    const res = await fetch('/api/courses/learning-journey', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-role': 'STUDENT', 'x-user-id': studentId },
+      body: JSON.stringify({ action: 'video_progress', studentId, courseId, lectureNumber, watchedSeconds, totalDurationSeconds: totalDuration })
+    });
+    return res.json();
+  };
+
+  const handleSubmitQuiz = async (answers: Record<string, any>) => {
+    const studentId = currentUser?.studentId || currentUser?.id || 'stud-1';
+    const courseId = journeyData?.course?.id || 'crs-stem-101';
+    const lectureNumber = journeyData?.activeLecture?.lectureNumber || 1;
+    const res = await fetch('/api/courses/learning-journey', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-role': 'STUDENT', 'x-user-id': studentId },
+      body: JSON.stringify({ action: 'submit_quiz', studentId, courseId, lectureNumber, answers })
+    });
+    return res.json();
+  };
+
+  const handleSubmitGame = async (score: number) => {
+    const studentId = currentUser?.studentId || currentUser?.id || 'stud-1';
+    const courseId = journeyData?.course?.id || 'crs-stem-101';
+    const lectureNumber = journeyData?.activeLecture?.lectureNumber || 1;
+    const res = await fetch('/api/courses/learning-journey', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-role': 'STUDENT', 'x-user-id': studentId },
+      body: JSON.stringify({ action: 'submit_game', studentId, courseId, lectureNumber, score })
+    });
+    return res.json();
+  };
 
   // Interactive Modals
   const [isPlayingGame, setIsPlayingGame] = useState(false);
@@ -282,9 +348,77 @@ print("Mission Goal Accomplished! Cadet XP rewarded.")`
   const xpThreshold = 2000;
   const xpProgressPercent = Math.min(100, Math.round((studentXp / xpThreshold) * 100));
 
+  if (viewMode === 'MOBILE_PORTAL') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC]">
+        {/* Quick Portal Switcher Ribbon */}
+        <div className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between text-xs font-bold">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px] sm:text-xs">Mobile-First 30-Lecture Portal • One Lecture at a Time</span>
+          </div>
+          <button
+            onClick={() => setViewMode('CADET_CAMPUS')}
+            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-[11px] font-semibold text-indigo-300 hover:text-white transition-colors cursor-pointer"
+          >
+            Cadet Campus Labs →
+          </button>
+        </div>
+
+        <StudentMobilePortal
+          studentProfile={{
+            id: currentUser?.id || 'stud-1',
+            name: currentUser?.displayName || 'Aarav Verma',
+            admissionNumber: currentUser?.admissionNumber || 'STU-2026-00101',
+            grade: currentUser?.gradeName || 'Grade 6',
+            section: currentUser?.sectionName || 'A',
+            schoolName: currentUser?.schoolName || 'Apex National Academy',
+            xp: studentXp,
+            level: studentLevel,
+            streak: studentStreak
+          }}
+          course={journeyData?.course || {
+            id: 'crs-stem-101',
+            title: 'Python & AI Foundations',
+            code: 'CRS-COD-101',
+            category: 'Coding',
+            totalLessons: 30
+          }}
+          schedule={journeyData?.schedule || {
+            totalLectures: 30,
+            completedLecturesCount: 1,
+            unlockedLecturesCount: 2,
+            overallProgressPercentage: 3,
+            isCourseCompleted: false,
+            nextScheduledUnlock: new Date(Date.now() + 86400000).toISOString()
+          }}
+          activeLecture={journeyData?.activeLecture}
+          activeLectureState={journeyData?.activeLectureState}
+          onVideoProgress={handleVideoProgress}
+          onSubmitQuiz={handleSubmitQuiz}
+          onSubmitGame={handleSubmitGame}
+          onRefreshJourney={fetchJourney}
+        />
+      </div>
+    );
+  }
+
   return (
     <AppShell>
       <div className="space-y-6 pb-12 animate-fade-in font-sans">
+        {/* Banner to Switch back to Mobile-First Portal */}
+        <div className="p-3 bg-gradient-to-r from-indigo-900 to-purple-900 text-white rounded-2xl flex items-center justify-between text-xs shadow-md">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📱</span>
+            <span className="font-bold">Automatic 30-Lecture Mobile Journey is Active</span>
+          </div>
+          <button
+            onClick={() => setViewMode('MOBILE_PORTAL')}
+            className="px-3 py-1 bg-white text-indigo-900 font-bold rounded-xl text-xs shadow-xs hover:bg-indigo-50 transition-colors cursor-pointer"
+          >
+            Open Mobile Portal →
+          </button>
+        </div>
         
         {/* Celebration Toast */}
         {celebrationToast && (
