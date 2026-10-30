@@ -107,7 +107,21 @@ export default function SchoolsManagementPage() {
   const [welcomeKitSchool, setWelcomeKitSchool] = useState<School | null>(null);
 
   const deletedAuditEvents = useMemo(() => {
-    return activities.filter(a => a.isRevokable && a.deletedSnapshot);
+    const fromContext = (activities || []).filter(a => a.isRevokable && a.deletedSnapshot);
+    if (fromContext.length > 0) return fromContext;
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('school_os_activities');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.filter((a: any) => a.isRevokable && a.deletedSnapshot);
+          }
+        }
+      } catch {}
+    }
+    return [];
   }, [activities]);
 
   // Filter out demo seed schools so only real onboarded schools appear

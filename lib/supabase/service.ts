@@ -107,16 +107,47 @@ export const productionService = {
     // Merge remote and local if remote exists, otherwise localSchools
     const source = remoteSchools && remoteSchools.length > 0 ? remoteSchools : localSchools;
     
-    // Filter strictly to ensure ZERO demo fixtures
-    const filtered = source.filter(s => !isDemoSchool(s));
+    const deletedIds = new Set<string>();
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('school_os_deleted_school_ids');
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) arr.forEach((id: string) => deletedIds.add(id));
+        }
+      } catch {}
+    }
+
+    // Filter strictly to ensure ZERO demo fixtures and NO deleted schools
+    const filtered = source
+      .filter(s => !isDemoSchool(s))
+      .filter(s => !deletedIds.has(s.id) && !deletedIds.has(s.code) && !deletedIds.has(s.registrationId || ''));
     
-    // Ensure initialWorkingRealSchool is present if no schools exist
-    if (!filtered.some(s => s.id === initialWorkingRealSchool.id || s.email === initialWorkingRealSchool.email)) {
-      filtered.unshift(initialWorkingRealSchool);
+    // Ensure initialWorkingRealSchool is present only if not deleted and list is otherwise empty
+    if (!deletedIds.has(initialWorkingRealSchool.id) && !deletedIds.has(initialWorkingRealSchool.code)) {
+      if (!filtered.some(s => s.id === initialWorkingRealSchool.id || s.email === initialWorkingRealSchool.email)) {
+        filtered.unshift(initialWorkingRealSchool);
+      }
     }
 
     setLocalProdStore(PROD_STORAGE_SCHOOLS, filtered);
     return filtered;
+  },
+
+  /**
+   * Permanently removes a school from Supabase and local storage
+   */
+  async deleteSchool(schoolId: string): Promise<boolean> {
+    try {
+      if (supabase && typeof supabase.from === 'function') {
+        await supabase.from('schools').delete().eq('id', schoolId);
+      }
+    } catch {}
+
+    const localSchools = getLocalProdStore<School[]>(PROD_STORAGE_SCHOOLS, []);
+    const updated = localSchools.filter(s => s.id !== schoolId && s.code !== schoolId && s.registrationId !== schoolId);
+    setLocalProdStore(PROD_STORAGE_SCHOOLS, updated);
+    return true;
   },
 
   /**

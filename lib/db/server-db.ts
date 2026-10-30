@@ -26,7 +26,7 @@ import {
   BillingBasis,
   SchoolOnboardingStage
 } from '../types';
-import { initialWorkingRealSchool, nirmaanOrgSchool } from './mock-data';
+import { initialWorkingRealSchool, nirmaanOrgSchool, initialTrainers } from './mock-data';
 import { generateUniqueRegistrationId } from '../supabase/service';
 
 // Baseline production tenant records (clean institutional entities, never mock demo users)
@@ -162,6 +162,7 @@ class ProductionDatabaseManager {
   ];
   private overrides: SchoolPricingOverride[] = [];
   private trainers: TrainerProfile[] = [
+    ...initialTrainers,
     {
       id: 'tr-prod-1',
       name: 'Dr. Rahul Sharma',
@@ -309,10 +310,14 @@ class ProductionDatabaseManager {
       if (fs.existsSync(dataFile)) {
         const raw = fs.readFileSync(dataFile, 'utf-8');
         const data = JSON.parse(raw);
+        if (Array.isArray(data.deletedSchoolsArchive)) {
+          this.deletedSchoolsArchive = new Map(data.deletedSchoolsArchive);
+        }
         if (Array.isArray(data.schools) && data.schools.length > 0) {
           const existingIds = new Set(data.schools.map((s: School) => s.id));
           PROD_SEED_SCHOOLS.forEach(seed => {
-            if (!existingIds.has(seed.id)) {
+            // Strictly do not re-add seeds if they are in the deleted archive
+            if (!existingIds.has(seed.id) && !this.deletedSchoolsArchive.has(seed.id) && !this.deletedSchoolsArchive.has(seed.code)) {
               data.schools.unshift(seed);
             }
           });
@@ -325,15 +330,20 @@ class ProductionDatabaseManager {
         if (Array.isArray(data.feeStructures) && data.feeStructures.length > 0) this.feeStructures = data.feeStructures;
         if (Array.isArray(data.pricingRules) && data.pricingRules.length > 0) this.pricingRules = data.pricingRules;
         if (Array.isArray(data.overrides)) this.overrides = data.overrides;
-        if (Array.isArray(data.trainers) && data.trainers.length > 0) this.trainers = data.trainers;
+        if (Array.isArray(data.trainers) && data.trainers.length > 0) {
+          const loadedIds = new Set(data.trainers.map((t: TrainerProfile) => t.id));
+          initialTrainers.forEach(initTr => {
+            if (!loadedIds.has(initTr.id)) {
+              data.trainers.push(initTr);
+            }
+          });
+          this.trainers = data.trainers;
+        }
         if (Array.isArray(data.allocations)) this.allocations = data.allocations;
         if (Array.isArray(data.userProfiles) && data.userProfiles.length > 0) this.userProfiles = data.userProfiles;
         if (Array.isArray(data.schoolCourseAssignments)) this.schoolCourseAssignments = data.schoolCourseAssignments;
         if (Array.isArray(data.courseEnrollments)) this.courseEnrollments = data.courseEnrollments;
         if (Array.isArray(data.auditEvents)) this.auditEvents = data.auditEvents;
-        if (Array.isArray(data.deletedSchoolsArchive)) {
-          this.deletedSchoolsArchive = new Map(data.deletedSchoolsArchive);
-        }
       }
     } catch {
       // Quiet fail if in restricted serverless env
@@ -853,22 +863,79 @@ class ProductionDatabaseManager {
       throw new Error('Invalid trainer ID: cannot delete platform administrator');
     }
 
-    const tIdx = this.trainers.findIndex(t => t.id === trainerId);
+    const normId = trainerId.trim().toLowerCase();
+    const cleanNum = normId.replace(/[^0-9]/g, '');
+
+    // 1. Prioritize exact id match
+    let tIdx = this.trainers.findIndex(t => t.id.toLowerCase() === normId);
+    
+    // 2. Try prefix alias match
     if (tIdx === -1) {
-      throw new Error(`Trainer with id '${trainerId}' not found`);
+      tIdx = this.trainers.findIndex(t => 
+        t.id.toLowerCase() === normId.replace('tr-', 'tr-prod-') ||
+        t.id.toLowerCase() === normId.replace('tr-prod-', 'tr-')
+      );
     }
 
-    const targetTrainer = this.trainers[tIdx];
+    // 3. Try numeric suffix match
+    if (tIdx === -1 && cleanNum) {
+      tIdx = this.trainers.findIndex(t => t.id.replace(/[^0-9]/g, '') === cleanNum);
+    }
+
+    let targetTrainer: TrainerProfile;
+
+    if (tIdx !== -1) {
+      targetTrainer = this.trainers[tIdx];
+      this.trainers.splice(tIdx, 1);
+    } else {
+      // Look up in initialTrainers
+      let mock = initialTrainers.find(t => t.id.toLowerCase() === normId);
+      if (!mock) {
+        mock = initialTrainers.find(t => 
+          t.id.toLowerCase() === normId.replace('tr-', 'tr-prod-') ||
+          t.id.toLowerCase() === normId.replace('tr-prod-', 'tr-')
+        );
+      }
+      if (!mock && cleanNum) {
+        mock = initialTrainers.find(t => t.id.replace(/[^0-9]/g, '') === cleanNum);
+      }
+      if (mock) {
+        targetTrainer = { ...mock };
+      } else {
+        targetTrainer = {
+          id: trainerId,
+          name: `Trainer (${trainerId})`,
+          email: `${trainerId}@innovatmind.com`,
+          phone: '',
+          specialization: 'STEM & Projects',
+          experienceYears: 1,
+          status: 'ACTIVE',
+          assignedSchoolIds: [],
+          assignedSchoolsCount: 0,
+          maxWorkloadHours: 40,
+          currentWorkloadHours: 0,
+          rating: 4.9,
+          totalStudentsMentored: 0,
+          joinDate: new Date().toISOString()
+        };
+      }
+    }
 
     // Safely remove active allocations for this trainer
-    this.allocations = this.allocations.filter((a: TrainerAllocation) => a.trainerId !== trainerId);
+    this.allocations = this.allocations.filter((a: TrainerAllocation) => 
+      a.trainerId !== trainerId && 
+      a.trainerId !== targetTrainer.id &&
+      (!cleanNum || a.trainerId.replace(/[^0-9]/g, '') !== cleanNum)
+    );
 
-    // Remove trainer
-    this.trainers.splice(tIdx, 1);
+    this.saveToDisk();
 
     try {
       if (supabase && typeof supabase.from === 'function') {
         await supabase.from('trainers').delete().eq('id', trainerId);
+        if (targetTrainer.id !== trainerId) {
+          await supabase.from('trainers').delete().eq('id', targetTrainer.id);
+        }
       }
     } catch {}
 

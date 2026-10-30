@@ -334,9 +334,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearDataError = () => setDataError(null);
 
-  const [schools, setSchools] = useState<School[]>(() =>
-    getActiveDataMode() === 'PRODUCTION' ? [initialWorkingRealSchool, nirmaanOrgSchool] : [initialWorkingRealSchool, nirmaanOrgSchool, ...initialSchools]
-  );
+  const [schools, setSchools] = useState<School[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const deletedRaw = localStorage.getItem('school_os_deleted_school_ids');
+        const deletedIds = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
+        const saved = localStorage.getItem('school_os_schools') || localStorage.getItem('school_os_prod_schools');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.filter((s: School) => s && s.id && !deletedIds.has(s.id) && !deletedIds.has(s.code) && !deletedIds.has(s.registrationId || ''));
+          }
+        }
+        const isProd = getActiveDataMode() === 'PRODUCTION';
+        const base = isProd ? [initialWorkingRealSchool, nirmaanOrgSchool] : [initialWorkingRealSchool, nirmaanOrgSchool, ...initialSchools];
+        return base.filter((s: School) => !deletedIds.has(s.id) && !deletedIds.has(s.code) && !deletedIds.has(s.registrationId || ''));
+      } catch {}
+    }
+    return getActiveDataMode() === 'PRODUCTION' ? [initialWorkingRealSchool, nirmaanOrgSchool] : [initialWorkingRealSchool, nirmaanOrgSchool, ...initialSchools];
+  });
   const [activeSchool, setActiveSchoolState] = useState<School>(initialWorkingRealSchool);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -498,6 +514,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const gatheredSchools: School[] = [];
       const seenSchoolIds = new Set<string>();
 
+      // Load deleted school IDs blacklist
+      const deletedIds = new Set<string>();
+      try {
+        const deletedRaw = localStorage.getItem('school_os_deleted_school_ids');
+        if (deletedRaw) {
+          const arr = JSON.parse(deletedRaw);
+          if (Array.isArray(arr)) arr.forEach((id: string) => deletedIds.add(id));
+        }
+      } catch {}
+
       schoolKeys.forEach(k => {
         try {
           const rawStr = localStorage.getItem(k);
@@ -505,7 +531,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const parsed = JSON.parse(rawStr);
             if (Array.isArray(parsed)) {
               parsed.forEach((s: School) => {
-                if (s && s.id && !seenSchoolIds.has(s.id)) {
+                if (s && s.id && !seenSchoolIds.has(s.id) && !deletedIds.has(s.id) && !deletedIds.has(s.code) && !deletedIds.has(s.registrationId || '')) {
                   seenSchoolIds.add(s.id);
                   gatheredSchools.push(s);
                 }
@@ -520,7 +546,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         : [initialWorkingRealSchool, nirmaanOrgSchool, ...initialSchools];
 
       baseSchools.forEach(b => {
-        if (!seenSchoolIds.has(b.id)) {
+        if (!seenSchoolIds.has(b.id) && !deletedIds.has(b.id) && !deletedIds.has(b.code) && !deletedIds.has(b.registrationId || '')) {
           seenSchoolIds.add(b.id);
           gatheredSchools.push(b);
         }
@@ -707,7 +733,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const feesData = await feesRes.json();
       const coursesData = coursesRes.ok ? await coursesRes.json() : { courses: [] };
 
-      if (schoolsData.schools) setSchools(schoolsData.schools);
+      if (schoolsData.schools) {
+        let deletedSchoolIds = new Set<string>();
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('school_os_deleted_school_ids');
+            if (raw) {
+              const arr = JSON.parse(raw);
+              if (Array.isArray(arr)) arr.forEach((id: string) => deletedSchoolIds.add(id));
+            }
+          } catch {}
+        }
+        const cleanSchools = schoolsData.schools.filter((s: School) => 
+          s && s.id && !deletedSchoolIds.has(s.id) && !deletedSchoolIds.has(s.code) && !deletedSchoolIds.has(s.registrationId || '')
+        );
+        setSchools(cleanSchools);
+        persistSchoolsToAllKeys(cleanSchools);
+      }
       if (studentsData.students) setStudentsList(studentsData.students);
       if (feesData.invoices) setInvoicesList(feesData.invoices);
       if (feesData.receipts) setPaymentReceiptsList(feesData.receipts);
@@ -1160,6 +1202,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
 
+      // Add to persistent deleted IDs blacklist so it NEVER resurrects on reload
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('school_os_deleted_school_ids');
+          const existing: string[] = raw ? JSON.parse(raw) : [];
+          const toAdd = [effectiveId, schoolId, targetSchool?.id, targetSchool?.code, targetSchool?.registrationId].filter(Boolean) as string[];
+          const nextDeleted = Array.from(new Set([...existing, ...toAdd]));
+          localStorage.setItem('school_os_deleted_school_ids', JSON.stringify(nextDeleted));
+        } catch {}
+      }
+
       // Referential purge of child entities
       setStudentsList(prev => prev.filter(s => s.schoolId !== effectiveId && s.schoolId !== schoolId));
       setInvoicesList(prev => prev.filter(i => i.schoolId !== effectiveId && i.schoolId !== schoolId));
@@ -1209,15 +1262,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onboardingStatus: 'ACTIVE'
       };
 
+      // Remove from persistent deleted IDs blacklist
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('school_os_deleted_school_ids');
+          if (raw) {
+            const existing: string[] = JSON.parse(raw);
+            const removeIds = new Set([restored.id, restored.code, restored.registrationId, auditEventIdOrSchoolId].filter(Boolean));
+            const nextDeleted = existing.filter(id => !removeIds.has(id));
+            localStorage.setItem('school_os_deleted_school_ids', JSON.stringify(nextDeleted));
+          }
+        } catch {}
+      }
+
       if (typeof fetch !== 'undefined') {
         await fetch('/api/schools', {
-          method: 'POST',
+          method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
-          body: JSON.stringify(restored)
+          body: JSON.stringify({
+            schoolId: restored.id,
+            action: 'revoke',
+            schoolSnapshot: restored
+          })
         }).catch(() => {});
       }
 
@@ -2885,9 +2955,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const scopedFacilities = isDemoSession
     ? initialFacilityOccupancies.filter(f => f.schoolId === activeSchool.id || f.schoolId === 'school-1' || f.schoolId === 'sch-del-001')
     : initialFacilityOccupancies.filter(f => f.schoolId === activeSchool.id);
-  const scopedActivities = isDemoSession
-    ? activitiesList.filter(a => a.schoolId === activeSchool.id || a.schoolId === 'school-1' || a.schoolId === 'sch-del-001')
-    : activitiesList.filter(a => a.schoolId === activeSchool.id);
+  const scopedActivities = role === 'SUPER_ADMIN'
+    ? activitiesList
+    : (isDemoSession
+        ? activitiesList.filter(a => a.schoolId === activeSchool.id || a.schoolId === 'school-1' || a.schoolId === 'sch-del-001' || a.schoolId === 'platform' || a.isRevokable)
+        : activitiesList.filter(a => a.schoolId === activeSchool.id || a.schoolId === 'platform' || a.isRevokable));
 
   const scopedEnrollments = role === 'SUPER_ADMIN'
     ? enrollmentsList
