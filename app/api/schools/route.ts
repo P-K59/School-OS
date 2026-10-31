@@ -5,18 +5,21 @@ import { authenticateRequest, authorizeRole } from '@/lib/auth/server-guard';
 export async function GET(req: NextRequest) {
   try {
     const auth = authenticateRequest(req);
-    const roleAuth = authorizeRole(auth, ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STUDENT']);
-    if (roleAuth) return roleAuth;
-
     const allSchools = await serverDb.getSchools();
 
-    // If user is SCHOOL_ADMIN, TEACHER, or STUDENT, restrict to their assigned school
-    if (auth && auth.role !== 'SUPER_ADMIN' && auth.schoolId) {
+    // 1. If authenticated as Super Admin, return all schools with administrative data
+    if (auth && auth.role === 'SUPER_ADMIN') {
+      return NextResponse.json({ schools: allSchools });
+    }
+
+    // 2. If authenticated as School Admin, Teacher, or Student, restrict to their assigned school
+    if (auth && auth.schoolId) {
       const scoped = allSchools.filter(s => s.id === auth.schoolId);
       return NextResponse.json({ schools: scoped });
     }
 
-    // Super Admin receives all schools
+    // 3. For public / unauthenticated requests (Login page, school picker, registration status, incognito bootstrap):
+    // Return all schools so users can authenticate and discover active institutions from any device or browser
     return NextResponse.json({ schools: allSchools });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch schools' }, { status: 500 });
