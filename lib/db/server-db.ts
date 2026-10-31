@@ -661,8 +661,28 @@ class ProductionDatabaseManager {
     }
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const adminEmail = (schoolData.adminCredentials?.email || schoolData.email || schoolData.contactPersonEmail || '').trim().toLowerCase();
-    const generatedLoginId = (schoolData.adminCredentials?.loginId || adminEmail || `admin@${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '')}.edu.in`).trim().toLowerCase();
+    const adminEmail = (
+      schoolData.adminCredentials?.email || 
+      schoolData.email || 
+      schoolData.contactEmail || 
+      schoolData.contactPersonEmail || 
+      ''
+    ).trim().toLowerCase();
+
+    const generatedLoginId = (
+      schoolData.adminCredentials?.loginId || 
+      adminEmail || 
+      `admin@${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '')}.edu.in`
+    ).trim().toLowerCase();
+
+    const phoneVal = (
+      schoolData.phone || 
+      schoolData.contactPhone || 
+      schoolData.contactPersonPhone || 
+      '+91 98000 00000'
+    ).trim();
+
+    const finalEmail = adminEmail || generatedLoginId;
     const generatedTempPassword = schoolData.adminCredentials?.temporaryPassword || `${cleanCode.replace(/[^a-zA-Z0-9]/g, '')}#Admin${randomSuffix}`;
     const newSchoolId = (schoolData.id && isUuid(schoolData.id)) 
       ? schoolData.id 
@@ -684,8 +704,9 @@ class ProductionDatabaseManager {
       country: schoolData.country || 'India',
       postalCode: schoolData.postalCode || '110001',
       address: schoolData.address || '',
-      phone: schoolData.phone || '',
-      email: adminEmail || schoolData.email || '',
+      phone: phoneVal,
+      email: finalEmail,
+      contactPersonEmail: finalEmail,
       schoolType: schoolData.schoolType || 'CBSE',
       isActive: schoolData.isActive !== undefined ? schoolData.isActive : (schoolData.onboardingStatus === 'PENDING_APPROVAL' ? false : true),
       isDemo: false,
