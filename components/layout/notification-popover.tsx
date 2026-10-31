@@ -42,6 +42,31 @@ interface NotificationItem {
   link?: string;
 }
 
+function formatNotificationTime(rawTime?: string): string {
+  if (!rawTime) return 'Recently';
+  try {
+    const date = new Date(rawTime);
+    if (isNaN(date.getTime())) return rawTime;
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    if (diffMs < 0) return 'Just now';
+
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMinutes < 5) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+  } catch {
+    return rawTime;
+  }
+}
+
 export function NotificationPopover({ className = '', isDarkTheme = false }: NotificationPopoverProps) {
   const { activities, notices, role, activeSchool } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -51,7 +76,7 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
       try {
         const stored = localStorage.getItem('school_os_read_notifications');
         if (stored) return new Set(JSON.parse(stored));
-      } catch {}
+      } catch { }
     }
     return new Set<string>();
   });
@@ -98,7 +123,7 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
           type: 'NOTICE',
           title: notice.title,
           description: notice.messageContent,
-          timestamp: notice.sentAt || 'Recently',
+          timestamp: formatNotificationTime(notice.sentAt),
           priority: notice.priority,
           category: notice.isEmergencyBanner ? 'Emergency' : 'Broadcast',
           read: readItemIds.has(`notif-notice-${notice.id}`),
@@ -115,7 +140,7 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
           type: 'AUDIT',
           title: activity.title,
           description: activity.detail,
-          timestamp: activity.time || 'Recently',
+          timestamp: formatNotificationTime(activity.time),
           category: activity.category,
           read: readItemIds.has(`notif-act-${activity.id}`)
         });
@@ -149,7 +174,7 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
     setReadItemIds(updated);
     try {
       localStorage.setItem('school_os_read_notifications', JSON.stringify(Array.from(updated)));
-    } catch {}
+    } catch { }
   };
 
   // Mark single item read
@@ -160,7 +185,7 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
       setReadItemIds(updated);
       try {
         localStorage.setItem('school_os_read_notifications', JSON.stringify(Array.from(updated)));
-      } catch {}
+      } catch { }
     }
   };
 
@@ -169,11 +194,10 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
       {/* Bell Button Trigger */}
       <button
         onClick={() => setIsOpen(prev => !prev)}
-        className={`relative p-1.5 sm:p-2 rounded-xl transition-all shrink-0 cursor-pointer ${
-          isDarkTheme
+        className={`relative p-1.5 sm:p-2 rounded-xl transition-all shrink-0 cursor-pointer ${isDarkTheme
             ? 'text-slate-400 hover:text-white hover:bg-slate-800'
             : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-        } ${isOpen ? (isDarkTheme ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-900 ring-2 ring-blue-500/20') : ''}`}
+          } ${isOpen ? (isDarkTheme ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-900 ring-2 ring-blue-500/20') : ''}`}
         title="Notifications & System Activity"
         aria-label="Notifications"
         aria-expanded={isOpen}
@@ -183,11 +207,10 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
         {/* Dynamic Badge */}
         {unreadCount > 0 && (
           <span
-            className={`absolute top-1 right-1 min-w-[15px] h-[15px] sm:min-w-[17px] sm:h-[17px] px-1 rounded-full text-white font-black text-[9px] sm:text-[10px] flex items-center justify-center leading-none shadow-sm ${
-              hasUrgent
+            className={`absolute top-1 right-1 min-w-[15px] h-[15px] sm:min-w-[17px] sm:h-[17px] px-1 rounded-full text-white font-black text-[9px] sm:text-[10px] flex items-center justify-center leading-none shadow-sm ${hasUrgent
                 ? 'bg-rose-600 animate-pulse'
                 : 'bg-blue-600'
-            }`}
+              }`}
           >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
@@ -196,7 +219,7 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
 
       {/* Popover Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] z-50 animate-in fade-in zoom-in-95 origin-top-right">
+        <div className="fixed sm:absolute inset-x-3 sm:inset-x-auto sm:right-0 top-16 sm:top-full mt-2 w-auto sm:w-96 max-w-[calc(100vw-1.5rem)] z-50 animate-in fade-in zoom-in-95 origin-top-right shadow-2xl">
           <Card className="bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
             {/* Header */}
             <div className="p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-white/10">
@@ -236,31 +259,28 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setActiveTab('ALL')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                    activeTab === 'ALL'
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === 'ALL'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
+                    }`}
                 >
                   All ({allNotifications.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('NOTICES')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                    activeTab === 'NOTICES'
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === 'NOTICES'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
+                    }`}
                 >
                   Circulars ({notices?.length || 0})
                 </button>
                 <button
                   onClick={() => setActiveTab('ACTIVITY')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                    activeTab === 'ACTIVITY'
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === 'ACTIVITY'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
+                    }`}
                 >
                   Activity ({activities?.length || 0})
                 </button>
@@ -289,9 +309,8 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
                     <div
                       key={item.id}
                       onClick={() => handleItemClick(item.id)}
-                      className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer hover:bg-slate-50 relative ${
-                        isUnread ? 'bg-blue-50/40' : 'bg-white'
-                      }`}
+                      className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer hover:bg-slate-50 relative ${isUnread ? 'bg-blue-50/40' : 'bg-white'
+                        }`}
                     >
                       {/* Unread indicator dot */}
                       {isUnread && (
@@ -389,4 +408,3 @@ export function NotificationPopover({ className = '', isDarkTheme = false }: Not
     </div>
   );
 }
-

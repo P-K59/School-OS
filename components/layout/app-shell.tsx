@@ -528,46 +528,9 @@ function AppShellContent({ children }: AppShellProps) {
 
           {/* Right: Controls & User Profile Badge */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Theme Toggle Button */}
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
-              title="Toggle Theme"
-            >
-              {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-600" />}
-            </button>
-
-            {/* Notification Bell with Interactive Popover */}
-            <NotificationPopover isDarkTheme={isDarkMode} />
-
-            {/* Help Question Circle - visible on extra wide screens */}
-            <button
-              onClick={() => setIsCommandPaletteOpen(true)}
-              className="hidden 2xl:flex p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
-              title="Help & Shortcuts (Ctrl+K)"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
-
-            {/* App Grid Switcher - visible on extra wide screens */}
-            <button
-              onClick={() => setIsCommandPaletteOpen(true)}
-              className="hidden 2xl:flex p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
-              title={
-                isStudentPortal
-                  ? "Student Learning Apps & Labs (Ctrl+K)"
-                  : isSuperAdminView
-                  ? "Super Admin Platform Apps (Ctrl+K)"
-                  : "School Management Apps (Ctrl+K)"
-              }
-              aria-label="Apps Menu"
-            >
-              <Grid className="w-4 h-4" />
-            </button>
-
             {/* Tenant Switcher & Role Switcher for Super Admin */}
             {isSuperAdminView && (
-              <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-slate-200 shrink-0">
+              <div className="hidden xl:flex items-center gap-2 pr-1 shrink-0">
                 <TenantSwitcher />
                 <RoleSwitcher />
               </div>
@@ -605,8 +568,48 @@ function AppShellContent({ children }: AppShellProps) {
               <DataModeBadge />
             </div>
 
+            {/* Help Question Circle - visible on extra wide screens */}
+            <button
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="hidden 2xl:flex p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
+              title="Help & Shortcuts (Ctrl+K)"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+
+            {/* App Grid Switcher - visible on extra wide screens */}
+            <button
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="hidden 2xl:flex p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
+              title={
+                isStudentPortal
+                  ? "Student Learning Apps & Labs (Ctrl+K)"
+                  : isSuperAdminView
+                  ? "Super Admin Platform Apps (Ctrl+K)"
+                  : "School Management Apps (Ctrl+K)"
+              }
+              aria-label="Apps Menu"
+            >
+              <Grid className="w-4 h-4" />
+            </button>
+
+            {/* Controls divider */}
+            <div className="hidden sm:block h-6 w-px bg-slate-200 shrink-0" />
+
+            {/* Theme Toggle Button */}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
+              title="Toggle Theme"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+            </button>
+
+            {/* Notification Bell with Interactive Popover */}
+            <NotificationPopover isDarkTheme={isDarkMode} />
+
             {/* User Profile Dropdown Menu */}
-            <div className="flex items-center pl-1.5 sm:pl-2 border-l border-slate-200 shrink-0">
+            <div className="flex items-center pl-1 sm:pl-1.5 border-l border-slate-200 shrink-0">
               <UserMenu />
             </div>
           </div>

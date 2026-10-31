@@ -151,21 +151,21 @@ export default function GlobalTrainersRosterPage() {
             const workloadPercent = Math.min(100, Math.round((trainer.currentWorkloadHours / trainer.maxWorkloadHours) * 100));
 
             return (
-              <Card key={trainer.id} className="p-5 bg-white border border-slate-200 shadow-sm rounded-2xl space-y-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md">
-                      {trainer.name.split(' ').map(n => n[0]).join('')}
+              <Card key={trainer.id} className="p-4 sm:p-5 bg-white border border-slate-200 shadow-sm rounded-2xl space-y-4 hover:shadow-md transition-all relative overflow-hidden">
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
+                      {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                     </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-sm leading-tight">{trainer.name}</h3>
-                      <span className="text-[11px] font-semibold text-blue-600 block mt-0.5">{trainer.specialization}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">{trainer.email}</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-slate-900 text-sm leading-tight truncate" title={trainer.name}>{trainer.name}</h3>
+                      <span className="text-[11px] font-semibold text-blue-600 block mt-0.5 truncate">{trainer.specialization}</span>
+                      <span className="text-[10px] text-slate-400 font-mono block truncate" title={trainer.email}>{trainer.email}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className={`text-[10px] font-bold ${trainer.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                  <div className="flex items-center gap-1.5 shrink-0 pl-1">
+                    <Badge variant="outline" className={`text-[10px] font-bold shrink-0 ${trainer.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                       {trainer.status}
                     </Badge>
                     <Button
@@ -176,7 +176,7 @@ export default function GlobalTrainersRosterPage() {
                         setDeleteError(null);
                       }}
                       title="Delete Trainer from Roster"
-                      className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      className="h-7 w-7 p-0 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer shrink-0 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
