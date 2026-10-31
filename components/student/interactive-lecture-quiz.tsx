@@ -109,6 +109,39 @@ export function InteractiveLectureQuiz({
           <span className="text-xs text-slate-400 block font-bold">Accuracy Score</span>
         </div>
 
+        {/* Smart Revision & Explanation for Missed Concepts */}
+        {!passed && (
+          <div className="text-left space-y-3 p-4 bg-amber-50/80 rounded-2xl border border-amber-200">
+            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Smart Revision Guide</span>
+            </div>
+            <p className="text-[11px] text-amber-800">
+              Review these key concept explanations before attempting your retry:
+            </p>
+            <div className="space-y-2">
+              {questions.map((q, idx) => {
+                const userAns = selectedAnswers[q.id];
+                const isCorrect = userAns !== undefined && (
+                  typeof q.correctAnswer === 'string' && typeof userAns === 'string'
+                    ? userAns.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()
+                    : userAns === q.correctAnswer
+                );
+                if (isCorrect) return null;
+
+                return (
+                  <div key={q.id || idx} className="p-3 bg-white rounded-xl border border-amber-200/70 text-xs space-y-1">
+                    <span className="font-bold text-slate-800 block">Q{idx + 1}: {q.prompt}</span>
+                    <span className="text-[11px] text-slate-600 block">
+                      <strong>Key Concept:</strong> {q.explanation || 'Review the core principles discussed in today\'s video lesson.'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="pt-2 flex justify-center gap-3">
           {!passed ? (
             <button
@@ -116,7 +149,7 @@ export function InteractiveLectureQuiz({
               className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>Retry Quiz</span>
+              <span>Retry Quiz with Revision Insights</span>
             </button>
           ) : (
             <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs">

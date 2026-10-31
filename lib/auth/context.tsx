@@ -832,11 +832,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'x-user-id': currentUser?.id || 'usr-current'
       };
 
-      const [schoolsRes, studentsRes, feesRes, coursesRes] = await Promise.all([
+      const [schoolsRes, studentsRes, feesRes, coursesRes, trainersRes] = await Promise.all([
         fetch('/api/schools', { headers }).catch(e => { throw new Error(`Schools API network error: ${e.message}`); }),
         fetch(`/api/students?schoolId=${activeSchool.id}`, { headers }).catch(e => { throw new Error(`Students API network error: ${e.message}`); }),
         fetch(`/api/fees?schoolId=${activeSchool.id}`, { headers }).catch(e => { throw new Error(`Fees API network error: ${e.message}`); }),
-        fetch('/api/courses', { headers }).catch(e => { throw new Error(`Courses API network error: ${e.message}`); })
+        fetch('/api/courses', { headers }).catch(e => { throw new Error(`Courses API network error: ${e.message}`); }),
+        fetch('/api/trainers', { headers }).catch(() => null)
       ]);
 
       if (!schoolsRes.ok) {
@@ -856,6 +857,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const studentsData = await studentsRes.json();
       const feesData = await feesRes.json();
       const coursesData = coursesRes.ok ? await coursesRes.json() : { courses: [] };
+      const trainersData = trainersRes && trainersRes.ok ? await trainersRes.json() : null;
 
       if (schoolsData.schools) {
         let deletedSchoolIds = new Set<string>();
@@ -879,6 +881,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (feesData.receipts) setPaymentReceiptsList(feesData.receipts);
       if (feesData.feeStructures) setFeeStructuresList(feesData.feeStructures);
       if (coursesData.courses && coursesData.courses.length > 0) setCoursesList(coursesData.courses);
+      if (trainersData && Array.isArray(trainersData.trainers)) {
+        setTrainersList(trainersData.trainers);
+        try { localStorage.setItem('school_os_trainers', JSON.stringify(trainersData.trainers)); } catch {}
+      }
+      if (trainersData && Array.isArray(trainersData.allocations)) {
+        setAllocationsList(trainersData.allocations);
+        try { localStorage.setItem('school_os_allocations', JSON.stringify(trainersData.allocations)); } catch {}
+      }
     } catch (err: any) {
       console.error('[Production Data Sync Error]', err);
       // Strictly expose error and DO NOT silently fall back to mock data!

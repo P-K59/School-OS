@@ -412,7 +412,7 @@ export interface Course {
   thumbnailUrl: string;
   isPublished: boolean;
   isArchived?: boolean;
-  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  status?: 'DRAFT' | 'REVIEW' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED';
   version?: string; // e.g. "v1.0"
   totalModules: number;
   totalLessons: number;

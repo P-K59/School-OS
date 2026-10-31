@@ -3,7 +3,7 @@
  * Calculates lecture availability, enforces unlock policies, and manages student backlog learning.
  */
 
-import { CurriculumLecture, StudentLectureJourneyState, UnlockPolicy, SchedulePolicy } from '../types';
+import type { CurriculumLecture, StudentLectureJourneyState, UnlockPolicy, SchedulePolicy } from '../types';
 
 export interface StudentScheduleContext {
   enrollmentStartDate: string; // ISO date string (when student/school was enrolled)

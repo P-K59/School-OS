@@ -6,7 +6,7 @@
 
 import { supabase } from '../supabase/client';
 import { supabaseAdmin, isServiceRoleConfigured } from '../supabase/server-client';
-import { 
+import type { 
   School, 
   Student, 
   FeeInvoice, 
@@ -32,7 +32,7 @@ import {
 import { initialWorkingRealSchool, nirmaanOrgSchool, initialTrainers } from './mock-data';
 import { generateUniqueRegistrationId } from '../supabase/service';
 import { generate30LectureCurriculum } from '../courses/curriculum-generator';
-import { SchedulingEngine, StudentJourneyScheduleResult } from '../learning/scheduling-engine';
+import { SchedulingEngine, type StudentJourneyScheduleResult } from '../learning/scheduling-engine';
 import { LearningJourneyOrchestrator } from '../learning/journey-orchestrator';
 
 // Baseline production tenant records (clean institutional entities, never mock demo users)
@@ -287,6 +287,8 @@ class ProductionDatabaseManager {
     }
   ];
   private deletedSchoolsArchive: Map<string, School> = new Map();
+  private deletedTrainersArchive: Map<string, TrainerProfile> = new Map();
+  private deletedCoursesArchive: Map<string, Course> = new Map();
 
   constructor() {
     this.loadFromDisk();
@@ -318,7 +320,9 @@ class ProductionDatabaseManager {
         schoolCourseAssignments: this.schoolCourseAssignments,
         courseEnrollments: this.courseEnrollments,
         auditEvents: this.auditEvents,
-        deletedSchoolsArchive: Array.from(this.deletedSchoolsArchive.entries())
+        deletedSchoolsArchive: Array.from(this.deletedSchoolsArchive.entries()),
+        deletedTrainersArchive: Array.from(this.deletedTrainersArchive.entries()),
+        deletedCoursesArchive: Array.from(this.deletedCoursesArchive.entries())
       };
       fs.writeFileSync(dataFile, JSON.stringify(payload, null, 2), 'utf-8');
     } catch {
@@ -338,6 +342,12 @@ class ProductionDatabaseManager {
         if (Array.isArray(data.deletedSchoolsArchive)) {
           this.deletedSchoolsArchive = new Map(data.deletedSchoolsArchive);
         }
+        if (Array.isArray(data.deletedTrainersArchive)) {
+          this.deletedTrainersArchive = new Map(data.deletedTrainersArchive);
+        }
+        if (Array.isArray(data.deletedCoursesArchive)) {
+          this.deletedCoursesArchive = new Map(data.deletedCoursesArchive);
+        }
         if (Array.isArray(data.schools) && data.schools.length > 0) {
           const existingIds = new Set(data.schools.map((s: School) => s.id));
           PROD_SEED_SCHOOLS.forEach(seed => {
@@ -355,10 +365,10 @@ class ProductionDatabaseManager {
         if (Array.isArray(data.feeStructures) && data.feeStructures.length > 0) this.feeStructures = data.feeStructures;
         if (Array.isArray(data.pricingRules) && data.pricingRules.length > 0) this.pricingRules = data.pricingRules;
         if (Array.isArray(data.overrides)) this.overrides = data.overrides;
-        if (Array.isArray(data.trainers) && data.trainers.length > 0) {
+        if (Array.isArray(data.trainers)) {
           const loadedIds = new Set(data.trainers.map((t: TrainerProfile) => t.id));
           initialTrainers.forEach(initTr => {
-            if (!loadedIds.has(initTr.id)) {
+            if (!loadedIds.has(initTr.id) && !this.deletedTrainersArchive.has(initTr.id) && !this.deletedTrainersArchive.has(initTr.name)) {
               data.trainers.push(initTr);
             }
           });
@@ -366,10 +376,10 @@ class ProductionDatabaseManager {
         }
         if (Array.isArray(data.allocations)) this.allocations = data.allocations;
         if (Array.isArray(data.userProfiles) && data.userProfiles.length > 0) this.userProfiles = data.userProfiles;
-        if (Array.isArray(data.courses) && data.courses.length > 0) {
+        if (Array.isArray(data.courses)) {
           const loadedCourseIds = new Set(data.courses.map((c: Course) => c.id));
           PROD_SEED_COURSES.forEach(seedCourse => {
-            if (!loadedCourseIds.has(seedCourse.id)) {
+            if (!loadedCourseIds.has(seedCourse.id) && !this.deletedCoursesArchive.has(seedCourse.id)) {
               data.courses.push(seedCourse);
             }
           });
@@ -1128,16 +1138,30 @@ class ProductionDatabaseManager {
       (!cleanNum || a.trainerId.replace(/[^0-9]/g, '') !== cleanNum)
     );
 
+    // Durable Deletion Archive: prevent re-seeding on restart or fresh session
+    this.deletedTrainersArchive.set(trainerId, { ...targetTrainer });
+    this.deletedTrainersArchive.set(targetTrainer.id, { ...targetTrainer });
+    if (targetTrainer.name) {
+      this.deletedTrainersArchive.set(targetTrainer.name, { ...targetTrainer });
+    }
+
     this.saveToDisk();
 
     try {
-      if (supabase && typeof supabase.from === 'function') {
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        await supabaseAdmin.from('trainers').delete().eq('id', trainerId);
+        if (targetTrainer.id !== trainerId) {
+          await supabaseAdmin.from('trainers').delete().eq('id', targetTrainer.id);
+        }
+      } else if (supabase && typeof supabase.from === 'function') {
         await supabase.from('trainers').delete().eq('id', trainerId);
         if (targetTrainer.id !== trainerId) {
           await supabase.from('trainers').delete().eq('id', targetTrainer.id);
         }
       }
-    } catch {}
+    } catch (e) {
+      console.error('Non-blocking Supabase trainer delete error:', e);
+    }
 
     await this.recordAuditEvent({
       schoolId: 'platform',
@@ -1615,6 +1639,12 @@ class ProductionDatabaseManager {
     const affectedAssignments = activeAssignments.length;
     if (force) {
       this.schoolCourseAssignments = this.schoolCourseAssignments.filter(a => a.courseId !== courseId);
+    }
+    // Durable archive to prevent re-seeding
+    this.deletedCoursesArchive.set(courseId, { ...courseToDelete });
+    this.deletedCoursesArchive.set(courseToDelete.id, { ...courseToDelete });
+    if (courseToDelete.slug) {
+      this.deletedCoursesArchive.set(courseToDelete.slug, { ...courseToDelete });
     }
     this.saveToDisk();
 

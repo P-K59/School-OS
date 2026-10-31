@@ -4,7 +4,7 @@
  * Ensures server-side validation and idempotency for XP and progress telemetry.
  */
 
-import { CurriculumLecture, StudentLectureJourneyState, QuizQuestion } from '../types';
+import type { CurriculumLecture, StudentLectureJourneyState, QuizQuestion } from '../types';
 
 export interface VideoWatchProgressPayload {
   lectureNumber: number;

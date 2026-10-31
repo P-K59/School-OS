@@ -3,7 +3,7 @@
  * Generates structured 30-lecture curriculums with modules, video metadata, quizzes, and games.
  */
 
-import { CurriculumLecture, LectureQuiz, LectureGame, VideoProviderType, UnlockPolicy, SchedulePolicy } from '../types';
+import type { CurriculumLecture, LectureQuiz, LectureGame, VideoProviderType, UnlockPolicy, SchedulePolicy } from '../types';
 
 export interface CurriculumGenerationOptions {
   grade: number;
@@ -246,9 +246,10 @@ export function generate30LectureCurriculum(options: CurriculumGenerationOptions
       const lectureNumber = lectureCounter;
       const estimatedMinutes = 20 + ((lectureNumber % 3) * 5); // 20, 25, 30 mins
 
-      // Simulated initial Google Drive preview link / embed
-      // Default to standard embed format: https://drive.google.com/file/d/.../preview
-      const driveFileId = `1IM_DRV_${grade}_LEC_${String(lectureNumber).padStart(2, '0')}`;
+      // Default to the verified production test Google Drive video asset for Lecture 1
+      const driveFileId = lectureNumber === 1 
+        ? '1VOC-cFiGMBad94DUXuQgcM1OuyO5b-ri'
+        : `1IM_DRV_${grade}_LEC_${String(lectureNumber).padStart(2, '0')}`;
       const embedUrl = `https://drive.google.com/file/d/${driveFileId}/preview`;
 
       const lecture: CurriculumLecture = {

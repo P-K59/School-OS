@@ -16,7 +16,11 @@ export async function GET(req: NextRequest) {
       serverDb.getTrainerAllocations(schoolId)
     ]);
 
-    return NextResponse.json({ trainers, allocations });
+    return NextResponse.json({ trainers, allocations }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      }
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch trainers' }, { status: 500 });
   }
