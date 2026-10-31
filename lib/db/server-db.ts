@@ -6,6 +6,10 @@
 
 import { supabase } from '../supabase/client';
 import { supabaseAdmin, isServiceRoleConfigured } from '../supabase/server-client';
+import { randomUUID } from 'crypto';
+
+const isUuid = (str?: string): boolean => 
+  Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str.trim()));
 import type { 
   School, 
   Student, 
@@ -400,12 +404,103 @@ class ProductionDatabaseManager {
   // 1. SCHOOL MANAGEMENT (SUPER ADMIN)
   // ==========================================
   async getSchools(): Promise<School[]> {
+    if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+      try {
+        const { data, error } = await supabaseAdmin.from('schools').select('*');
+        if (!error && Array.isArray(data) && data.length > 0) {
+          for (const row of data) {
+            const mapped: School = {
+              id: row.id,
+              registrationId: row.registration_id || row.code,
+              code: row.code,
+              name: row.name,
+              schoolType: row.school_type || 'CBSE',
+              email: row.email,
+              phone: row.phone,
+              address: row.address || '',
+              city: row.city || 'Delhi',
+              state: row.state || 'Delhi',
+              country: row.country || 'India',
+              postalCode: row.postal_code || '110001',
+              isActive: Boolean(row.is_active),
+              isDemo: false,
+              totalStudents: row.total_students || 0,
+              totalStaff: row.total_staff || 1,
+              enrolledCoursesCount: row.enrolled_courses_count || 0,
+              createdAt: row.created_at || new Date().toISOString(),
+              onboardingStatus: row.onboarding_status || (row.is_active ? 'ACTIVE' : 'PENDING_APPROVAL'),
+              approvalDetails: row.approval_details || {
+                status: row.is_active ? 'APPROVED' : 'PENDING',
+                submittedAt: row.created_at
+              },
+              academicSession: row.academic_session || '2026-2027',
+              adminCredentials: row.admin_credentials || {
+                loginId: row.email,
+                email: row.email,
+                temporaryPassword: 'password123',
+                generatedAt: row.created_at,
+                provisionedBy: 'Supabase Database'
+              }
+            };
+            const existingIdx = this.schools.findIndex(s => s.id === mapped.id || s.code === mapped.code || (s.registrationId && s.registrationId === mapped.registrationId));
+            if (existingIdx !== -1) {
+              this.schools[existingIdx] = { ...this.schools[existingIdx], ...mapped };
+            } else {
+              this.schools.push(mapped);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[serverDb.getSchools] Supabase fetch fallback to local pool:', err.message);
+      }
+    }
     return [...this.schools];
   }
 
   async getSchoolById(schoolId: string): Promise<School | null> {
     const found = this.schools.find(s => s.id === schoolId || s.registrationId === schoolId || s.code === schoolId);
-    return found ? { ...found } : null;
+    if (found) return { ...found };
+
+    // Query Supabase directly if not found in memory
+    if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+      try {
+        const queryUuid = isUuid(schoolId);
+        const filter = queryUuid
+          ? `id.eq.${schoolId},code.ilike.${schoolId},registration_id.ilike.${schoolId}`
+          : `code.ilike.${schoolId},registration_id.ilike.${schoolId}`;
+        const { data, error } = await supabaseAdmin.from('schools').select('*').or(filter).maybeSingle();
+        if (data && !error) {
+          const mapped: School = {
+            id: data.id,
+            registrationId: data.registration_id || data.code,
+            code: data.code,
+            name: data.name,
+            schoolType: data.school_type || 'CBSE',
+            email: data.email,
+            phone: data.phone,
+            address: data.address || '',
+            city: data.city || 'Delhi',
+            state: data.state || 'Delhi',
+            country: data.country || 'India',
+            postalCode: data.postal_code || '110001',
+            isActive: Boolean(data.is_active),
+            isDemo: false,
+            totalStudents: data.total_students || 0,
+            totalStaff: data.total_staff || 1,
+            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            createdAt: data.created_at || new Date().toISOString(),
+            onboardingStatus: data.onboarding_status || (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL'),
+            approvalDetails: data.approval_details || {
+              status: data.is_active ? 'APPROVED' : 'PENDING',
+              submittedAt: data.created_at
+            }
+          };
+          this.schools.push(mapped);
+          return mapped;
+        }
+      } catch {}
+    }
+    return null;
   }
 
   async lookupSchoolStatus(query: string): Promise<{
@@ -432,8 +527,11 @@ class ProductionDatabaseManager {
     if (!query || !query.trim()) {
       return { found: false, error: 'Registration ID or email is required' };
     }
-    const q = query.trim().toLowerCase();
-    const matched = this.schools.find(s => 
+    const clean = query.trim();
+    const q = clean.toLowerCase();
+
+    // 1. Check in-memory pool first
+    let matched = this.schools.find(s => 
       (s.registrationId && s.registrationId.toLowerCase() === q) ||
       (s.code && s.code.toLowerCase() === q) ||
       (s.email && s.email.toLowerCase() === q) ||
@@ -441,10 +539,57 @@ class ProductionDatabaseManager {
       (s.id && s.id.toLowerCase() === q)
     );
 
+    // 2. If not found in memory, query Supabase safely without non-UUID type errors
+    if (!matched && supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+      try {
+        const queryUuid = isUuid(clean);
+        const orFilter = queryUuid
+          ? `id.eq.${clean},code.ilike.${clean},registration_id.ilike.${clean},email.ilike.${clean}`
+          : `code.ilike.${clean},registration_id.ilike.${clean},email.ilike.${clean}`;
+
+        const { data, error } = await supabaseAdmin
+          .from('schools')
+          .select('*')
+          .or(orFilter)
+          .maybeSingle();
+
+        if (data && !error) {
+          matched = {
+            id: data.id,
+            registrationId: data.registration_id || data.code,
+            code: data.code,
+            name: data.name,
+            schoolType: data.school_type || 'CBSE',
+            email: data.email,
+            phone: data.phone,
+            address: data.address || '',
+            city: data.city || 'Delhi',
+            state: data.state || 'Delhi',
+            country: data.country || 'India',
+            postalCode: data.postal_code || '110001',
+            isActive: Boolean(data.is_active),
+            isDemo: false,
+            totalStudents: data.total_students || 0,
+            totalStaff: data.total_staff || 1,
+            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            createdAt: data.created_at || new Date().toISOString(),
+            onboardingStatus: data.onboarding_status || (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL'),
+            approvalDetails: data.approval_details || {
+              status: data.is_active ? 'APPROVED' : 'PENDING',
+              submittedAt: data.created_at
+            }
+          };
+          this.schools.push(matched);
+        }
+      } catch (err: any) {
+        console.warn('[serverDb.lookupSchoolStatus] Supabase lookup error:', err.message);
+      }
+    }
+
     if (!matched) {
       return { 
         found: false, 
-        error: `No registration found matching "${query.trim()}". Please verify your Registration ID (e.g. IMS-2026-XXXXXX) or official email.` 
+        error: `No registration found matching "${clean}". Please verify your Registration ID (e.g. IMS-2026-XXXXXX) or official email.` 
       };
     }
 
@@ -498,7 +643,9 @@ class ProductionDatabaseManager {
     const adminEmail = (schoolData.adminCredentials?.email || schoolData.email || schoolData.contactPersonEmail || '').trim().toLowerCase();
     const generatedLoginId = (schoolData.adminCredentials?.loginId || adminEmail || `admin@${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '')}.edu.in`).trim().toLowerCase();
     const generatedTempPassword = schoolData.adminCredentials?.temporaryPassword || `${cleanCode.replace(/[^a-zA-Z0-9]/g, '')}#Admin${randomSuffix}`;
-    const newSchoolId = schoolData.id || `sch-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    const newSchoolId = (schoolData.id && isUuid(schoolData.id)) 
+      ? schoolData.id 
+      : randomUUID();
 
     // Persist provided registration ID or generate a unique persistent one
     let finalRegId = schoolData.registrationId && schoolData.registrationId.trim();
@@ -573,8 +720,8 @@ class ProductionDatabaseManager {
 
     // Also attempt Supabase insert if available
     try {
-      if (supabase && typeof supabase.from === 'function') {
-        await supabase.from('schools').insert([{
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        const { error: sbErr } = await supabaseAdmin.from('schools').insert([{
           id: newSchool.id,
           registration_id: newSchool.registrationId,
           code: newSchool.code,
@@ -592,8 +739,13 @@ class ProductionDatabaseManager {
           approval_details: newSchool.approvalDetails,
           created_at: newSchool.createdAt
         }]);
+        if (sbErr) {
+          console.warn('[serverDb.createSchool] Supabase insert warning:', sbErr.message);
+        }
       }
-    } catch {}
+    } catch (e: any) {
+      console.warn('[serverDb.createSchool] Supabase error:', e.message);
+    }
 
     return newSchool;
   }
@@ -631,12 +783,16 @@ class ProductionDatabaseManager {
     );
 
     // 2. Query Supabase if not found in serverDb memory
-    if (!school && supabase && typeof supabase.from === 'function') {
+    if (!school && supabaseAdmin && typeof supabaseAdmin.from === 'function') {
       try {
-        const { data } = await supabase
+        const queryUuid = isUuid(identifier);
+        const orFilter = queryUuid
+          ? `id.eq.${identifier},code.ilike.${identifier},registration_id.ilike.${identifier}`
+          : `code.ilike.${identifier},registration_id.ilike.${identifier}`;
+        const { data } = await supabaseAdmin
           .from('schools')
           .select('*')
-          .or(`id.eq.${identifier},code.eq.${identifier},registration_id.eq.${identifier}`)
+          .or(orFilter)
           .maybeSingle();
         if (data) {
           school = {
@@ -773,12 +929,18 @@ class ProductionDatabaseManager {
     this.saveToDisk();
 
     try {
-      if (supabase && typeof supabase.from === 'function') {
-        await supabase.from('schools').update({
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        const isIdUuid = isUuid(school.id);
+        const updatePayload = {
           is_active: true,
           onboarding_status: 'ACTIVE',
           approval_details: updated.approvalDetails
-        }).eq('id', school.id);
+        };
+        if (isIdUuid) {
+          await supabaseAdmin.from('schools').update(updatePayload).eq('id', school.id);
+        } else if (school.code) {
+          await supabaseAdmin.from('schools').update(updatePayload).eq('code', school.code);
+        }
       }
     } catch {}
 
@@ -794,12 +956,16 @@ class ProductionDatabaseManager {
       (s.email && s.email.toLowerCase() === norm)
     );
 
-    if (!school && supabase && typeof supabase.from === 'function') {
+    if (!school && supabaseAdmin && typeof supabaseAdmin.from === 'function') {
       try {
-        const { data } = await supabase
+        const queryUuid = isUuid(identifier);
+        const orFilter = queryUuid
+          ? `id.eq.${identifier},code.ilike.${identifier},registration_id.ilike.${identifier}`
+          : `code.ilike.${identifier},registration_id.ilike.${identifier}`;
+        const { data } = await supabaseAdmin
           .from('schools')
           .select('*')
-          .or(`id.eq.${identifier},code.eq.${identifier},registration_id.eq.${identifier}`)
+          .or(orFilter)
           .maybeSingle();
         if (data) {
           school = {
@@ -874,12 +1040,18 @@ class ProductionDatabaseManager {
     this.saveToDisk();
 
     try {
-      if (supabase && typeof supabase.from === 'function') {
-        await supabase.from('schools').update({
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        const isIdUuid = isUuid(school.id);
+        const updatePayload = {
           is_active: false,
           onboarding_status: 'REJECTED',
           approval_details: updated.approvalDetails
-        }).eq('id', school.id);
+        };
+        if (isIdUuid) {
+          await supabaseAdmin.from('schools').update(updatePayload).eq('id', school.id);
+        } else if (school.code) {
+          await supabaseAdmin.from('schools').update(updatePayload).eq('code', school.code);
+        }
       }
     } catch {}
 

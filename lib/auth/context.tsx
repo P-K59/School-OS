@@ -1014,7 +1014,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const cityCode = (schoolData.city || 'SCH').slice(0, 3).toUpperCase();
-    const newSchoolId = `school-${Date.now()}`;
+    const newSchoolId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (+c ^ (Math.floor(Math.random() * 16) >> (+c / 4))).toString(16));
     const newSchoolCode = `SCH-${cityCode}-${Math.floor(100 + Math.random() * 900)}`;
     const registrationId = generateUniqueRegistrationId(schools);
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -2551,13 +2553,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    const matchedSchoolByAdminCreds = candidateSchools.find(
+    let matchedSchoolByAdminCreds = candidateSchools.find(
       s => (s.adminCredentials?.loginId && s.adminCredentials.loginId.toLowerCase() === raw) ||
            (s.adminCredentials?.email && s.adminCredentials.email.toLowerCase() === raw) ||
            (s.email && s.email.toLowerCase() === raw) ||
            (s.contactPersonEmail && s.contactPersonEmail.toLowerCase() === raw) ||
            (s.code && s.code.toLowerCase() === raw)
     );
+
+    // If not found in local candidate pool (e.g. fresh device, incognito, or after cloud approval), query server
+    if (!matchedSchoolByAdminCreds && typeof fetch !== 'undefined') {
+      try {
+        const schoolsRes = await fetch('/api/schools');
+        if (schoolsRes.ok) {
+          const sData = await schoolsRes.json();
+          if (Array.isArray(sData.schools)) {
+            setSchools(sData.schools);
+            persistSchoolsToAllKeys(sData.schools);
+            matchedSchoolByAdminCreds = sData.schools.find((s: School) =>
+              (s.adminCredentials?.loginId && s.adminCredentials.loginId.toLowerCase() === raw) ||
+              (s.adminCredentials?.email && s.adminCredentials.email.toLowerCase() === raw) ||
+              (s.email && s.email.toLowerCase() === raw) ||
+              (s.contactPersonEmail && s.contactPersonEmail.toLowerCase() === raw) ||
+              (s.code && s.code.toLowerCase() === raw)
+            );
+          }
+        }
+      } catch {}
+    }
     if (matchedSchoolByAdminCreds) {
       const expectedPassword = matchedSchoolByAdminCreds.adminCredentials?.temporaryPassword || 'password123';
       const isPasswordValid = 
@@ -3062,37 +3085,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sync active student with active school
   useEffect(() => {
-    const schoolStudents = isDemoSession
-      ? (() => {
-          const inList = studentsList.filter(s => s.schoolId === activeSchool.id || s.schoolId === 'school-1' || s.schoolId === 'sch-del-001');
+    const schoolStudents = isActualSchool
+      ? studentsList.filter(s => s.schoolId === activeSchool.id)
+      : (() => {
+          const inList = studentsList.filter(s => s.schoolId === activeSchool.id || s.schoolId === 'school-1');
           return inList.length > 0 ? inList : initialStudents.filter(s => s.schoolId === 'school-1');
-        })()
-      : studentsList.filter(s => s.schoolId === activeSchool.id);
+        })();
     if (schoolStudents.length > 0) {
       setActiveStudent(schoolStudents[0]);
     } else {
       setActiveStudent(null);
     }
-  }, [activeSchool, studentsList, isDemoSession]);
+  }, [activeSchool, studentsList, isActualSchool]);
 
   // Tenant-Scoped Data Computations (Enforcing PostgreSQL RLS paradigm)
   const scopedStudents = role === 'SUPER_ADMIN'
     ? studentsList
-    : (isDemoSession
-        ? (() => {
-            const list = studentsList.filter(s => s.schoolId === activeSchool.id || s.schoolId === 'school-1' || s.schoolId === 'sch-del-001');
+    : (isActualSchool
+        ? studentsList.filter(s => s.schoolId === activeSchool.id)
+        : (() => {
+            const list = studentsList.filter(s => s.schoolId === activeSchool.id || s.schoolId === 'school-1');
             return list.length > 0 ? list : initialStudents.filter(s => s.schoolId === 'school-1');
-          })()
-        : studentsList.filter(s => s.schoolId === activeSchool.id));
+          })());
 
   const scopedInvoices = role === 'SUPER_ADMIN'
     ? invoicesList
-    : (isDemoSession
-        ? (() => {
-            const list = invoicesList.filter(inv => inv.schoolId === activeSchool.id || inv.schoolId === 'school-1' || inv.schoolId === 'sch-del-001');
+    : (isActualSchool
+        ? invoicesList.filter(inv => inv.schoolId === activeSchool.id)
+        : (() => {
+            const list = invoicesList.filter(inv => inv.schoolId === activeSchool.id || inv.schoolId === 'school-1');
             return list.length > 0 ? list : initialInvoices.filter(i => i.schoolId === 'school-1');
-          })()
-        : invoicesList.filter(inv => inv.schoolId === activeSchool.id));
+          })());
 
   const scopedStaff = role === 'SUPER_ADMIN'
     ? staffList
