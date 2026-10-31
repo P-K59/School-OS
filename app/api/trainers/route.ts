@@ -26,6 +26,29 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export async function POST(req: NextRequest) {
+  try {
+    const auth = authenticateRequest(req);
+    const roleAuth = authorizeRole(auth, ['SUPER_ADMIN']);
+    if (roleAuth) return roleAuth;
+
+    const body = await req.json();
+    if (!body || !body.name || !body.email) {
+      return NextResponse.json({ error: 'Trainer name and email are required' }, { status: 400 });
+    }
+
+    const result = await serverDb.createTrainer(body);
+
+    return NextResponse.json({
+      success: true,
+      trainer: result.trainer,
+      message: `Specialist trainer '${result.trainer.name}' onboarded successfully`
+    }, { status: 201 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to onboard trainer' }, { status: 400 });
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const auth = authenticateRequest(req);

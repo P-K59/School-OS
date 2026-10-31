@@ -23,8 +23,10 @@ import {
   Award,
   Trash2,
   AlertTriangle,
-  X
+  X,
+  UserPlus
 } from 'lucide-react';
+import { OnboardTrainerModal } from '@/components/trainers/onboard-trainer-modal';
 
 export default function GlobalTrainersRosterPage() {
   const { trainers, trainerAllocations, schools, deleteTrainer } = useAuth();
@@ -32,6 +34,7 @@ export default function GlobalTrainersRosterPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialization, setSelectedSpecialization] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [isOnboardModalOpen, setIsOnboardModalOpen] = useState(false);
 
   const [deleteConfirmTrainer, setDeleteConfirmTrainer] = useState<TrainerProfile | null>(null);
   const [isDeletingTrainer, setIsDeletingTrainer] = useState(false);
@@ -66,6 +69,16 @@ export default function GlobalTrainersRosterPage() {
             <p className="text-xs md:text-sm text-slate-500 mt-1">
               Master STEM, Robotics, and AI trainers certified by InnovatMind HQ deployed across partner institutions.
             </p>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <Button
+              onClick={() => setIsOnboardModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs h-10 px-4 rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Onboard New Trainer</span>
+            </Button>
           </div>
         </div>
 
@@ -290,6 +303,11 @@ export default function GlobalTrainersRosterPage() {
             </Card>
           </div>
         )}
+        {/* Onboard Trainer Modal */}
+        <OnboardTrainerModal
+          isOpen={isOnboardModalOpen}
+          onClose={() => setIsOnboardModalOpen(false)}
+        />
       </div>
     </AppShell>
   );

@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Zap,
 } from 'lucide-react';
+import { NotificationPopover } from '@/components/layout/notification-popover';
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -107,10 +108,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-400 hover:text-white transition-colors rounded-full hover:bg-slate-800">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse" />
-            </button>
+            <NotificationPopover isDarkTheme={true} />
           </div>
         </header>
         

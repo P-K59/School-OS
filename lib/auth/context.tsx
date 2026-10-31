@@ -28,6 +28,8 @@ import {
   SchoolCourseAssignment,
   TrainerProfile,
   TrainerAllocation,
+  TrainerSpecialization,
+  TrainerStatus,
   BillingBasis,
   SchoolOnboardingStage,
   StudentCredentials,
@@ -195,6 +197,16 @@ interface AuthContextType {
   };
   removeTrainerAllocation: (allocationId: string) => void;
   updateTrainerProfile: (trainerId: string, updates: Partial<TrainerProfile>) => void;
+  onboardTrainer: (trainerData: {
+    name: string;
+    email: string;
+    phone: string;
+    specialization: TrainerSpecialization;
+    experienceYears?: number;
+    maxWorkloadHours?: number;
+    avatarUrl?: string;
+    status?: TrainerStatus;
+  }) => Promise<{ success: boolean; trainer?: TrainerProfile; error?: string }>;
   deleteTrainer: (trainerId: string) => Promise<{ success: boolean; error?: string }>;
 
   // Audit Events
@@ -2315,6 +2327,87 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       return updated;
     });
+  };
+
+  const onboardTrainer = async (trainerData: {
+    name: string;
+    email: string;
+    phone: string;
+    specialization: TrainerSpecialization;
+    experienceYears?: number;
+    maxWorkloadHours?: number;
+    avatarUrl?: string;
+    status?: TrainerStatus;
+  }): Promise<{ success: boolean; trainer?: TrainerProfile; error?: string }> => {
+    try {
+      if (!trainerData.name?.trim() || !trainerData.email?.trim() || !trainerData.phone?.trim() || !trainerData.specialization) {
+        return { success: false, error: 'Name, email, phone, and specialization are required.' };
+      }
+
+      const normalizedEmail = trainerData.email.trim().toLowerCase();
+      if (trainersList.some(t => t.email.toLowerCase() === normalizedEmail)) {
+        return { success: false, error: `A trainer with email "${trainerData.email}" already exists on the roster.` };
+      }
+
+      let newTrainer: TrainerProfile | null = null;
+
+      if (typeof fetch !== 'undefined') {
+        const res = await fetch('/api/trainers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': 'SUPER_ADMIN',
+            'x-user-id': currentUser?.id || 'usr-super'
+          },
+          body: JSON.stringify(trainerData)
+        });
+
+        if (res.ok) {
+          const resData = await res.json();
+          newTrainer = resData.trainer;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          return { success: false, error: errData.error || `Server failed to onboard trainer (HTTP ${res.status})` };
+        }
+      }
+
+      if (!newTrainer) {
+        newTrainer = {
+          id: `tr-${Date.now()}`,
+          name: trainerData.name.trim(),
+          email: normalizedEmail,
+          phone: trainerData.phone.trim(),
+          avatarUrl: trainerData.avatarUrl?.trim(),
+          specialization: trainerData.specialization,
+          experienceYears: Number(trainerData.experienceYears) || 1,
+          status: trainerData.status || 'ACTIVE',
+          assignedSchoolIds: [],
+          assignedSchoolsCount: 0,
+          maxWorkloadHours: Number(trainerData.maxWorkloadHours) || 40,
+          currentWorkloadHours: 0,
+          totalStudentsMentored: 0,
+          rating: 5.0,
+          joinDate: new Date().toISOString().split('T')[0]
+        };
+      }
+
+      setTrainersList(prev => {
+        const updated = [newTrainer!, ...prev.filter(t => t.id !== newTrainer!.id && t.email.toLowerCase() !== normalizedEmail)];
+        try { localStorage.setItem('school_os_trainers', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+
+      recordAuditEvent(
+        'Specialist Trainer Onboarded',
+        `Master specialist '${newTrainer.name}' (${newTrainer.specialization}) onboarded to InnovatMind Central Roster.`,
+        'STEM',
+        'platform'
+      );
+
+      return { success: true, trainer: newTrainer };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error occurred while onboarding trainer' };
+    }
   };
 
   const deleteTrainer = async (trainerId: string): Promise<{ success: boolean; error?: string }> => {
@@ -5334,6 +5427,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         allocateTrainer,
         removeTrainerAllocation,
         updateTrainerProfile,
+        onboardTrainer,
         deleteTrainer,
         recordAuditEvent,
         updateSchoolBranding,

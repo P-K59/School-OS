@@ -11,6 +11,7 @@ import { UserMenu } from './user-menu';
 import { CommandPalette } from './command-palette';
 import { DataModeBadge } from './data-mode-badge';
 import { EmergencyNoticeBanner } from './emergency-banner';
+import { NotificationPopover } from './notification-popover';
 import {
   LayoutDashboard,
   Users,
@@ -536,13 +537,8 @@ function AppShellContent({ children }: AppShellProps) {
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-600" />}
             </button>
 
-            {/* Notification Bell with Badge */}
-            <button className="relative p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0">
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-rose-500 text-white font-bold text-[8px] sm:text-[9px] flex items-center justify-center">
-                3
-              </span>
-            </button>
+            {/* Notification Bell with Interactive Popover */}
+            <NotificationPopover isDarkTheme={isDarkMode} />
 
             {/* Help Question Circle - visible on extra wide screens */}
             <button

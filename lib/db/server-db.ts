@@ -18,6 +18,8 @@ import type {
   SchoolPricingOverride,
   TrainerProfile,
   TrainerAllocation,
+  TrainerSpecialization,
+  TrainerStatus,
   AuditEvent,
   UserRole,
   SchoolCourseAssignment,
@@ -1066,6 +1068,78 @@ class ProductionDatabaseManager {
     }
 
     return { success: true, clearedCount };
+  }
+
+  async createTrainer(data: Partial<TrainerProfile>): Promise<{ success: boolean; trainer: TrainerProfile }> {
+    if (!data.name || !data.name.trim()) {
+      throw new Error('Trainer name is required');
+    }
+    if (!data.email || !data.email.trim()) {
+      throw new Error('Trainer email is required');
+    }
+
+    const normEmail = data.email.trim().toLowerCase();
+    const existing = this.trainers.find(t => t.email.toLowerCase() === normEmail);
+    if (existing) {
+      throw new Error(`A trainer with email '${data.email}' already exists on the roster.`);
+    }
+
+    const trainerId = data.id || `tr-${Date.now()}`;
+    const newTrainer: TrainerProfile = {
+      id: trainerId,
+      name: data.name.trim(),
+      email: normEmail,
+      phone: data.phone?.trim() || '+91 99999 00000',
+      avatarUrl: data.avatarUrl?.trim(),
+      specialization: (data.specialization as TrainerSpecialization) || 'Robotics',
+      experienceYears: Number(data.experienceYears) || 1,
+      status: (data.status as TrainerStatus) || 'ACTIVE',
+      assignedSchoolIds: data.assignedSchoolIds || [],
+      assignedSchoolsCount: data.assignedSchoolIds?.length || 0,
+      maxWorkloadHours: Number(data.maxWorkloadHours) || 40,
+      currentWorkloadHours: Number(data.currentWorkloadHours) || 0,
+      totalStudentsMentored: Number(data.totalStudentsMentored) || 0,
+      rating: Number(data.rating) || 5.0,
+      joinDate: data.joinDate || new Date().toISOString().split('T')[0]
+    };
+
+    // If re-onboarding a previously deleted ID or name, clear from deletion archive
+    this.deletedTrainersArchive.delete(newTrainer.id);
+    this.deletedTrainersArchive.delete(newTrainer.name);
+
+    this.trainers.unshift(newTrainer);
+    this.saveToDisk();
+
+    try {
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        await supabaseAdmin.from('trainers').insert([{
+          id: newTrainer.id,
+          name: newTrainer.name,
+          email: newTrainer.email,
+          phone: newTrainer.phone,
+          avatar_url: newTrainer.avatarUrl,
+          specialization: newTrainer.specialization,
+          experience_years: newTrainer.experienceYears,
+          status: newTrainer.status,
+          max_workload_hours: newTrainer.maxWorkloadHours,
+          current_workload_hours: newTrainer.currentWorkloadHours,
+          total_students_mentored: newTrainer.totalStudentsMentored,
+          rating: newTrainer.rating,
+          join_date: newTrainer.joinDate
+        }]);
+      }
+    } catch (e) {
+      console.error('Non-blocking Supabase trainer insert error:', e);
+    }
+
+    await this.recordAuditEvent({
+      schoolId: 'platform',
+      title: 'Specialist Trainer Onboarded',
+      detail: `Trainer '${newTrainer.name}' (${newTrainer.specialization}) added to InnovatMind Central Roster by Super Admin.`,
+      category: 'STEM'
+    });
+
+    return { success: true, trainer: newTrainer };
   }
 
   async deleteTrainer(trainerId: string): Promise<{ success: boolean; deletedTrainer: TrainerProfile }> {
