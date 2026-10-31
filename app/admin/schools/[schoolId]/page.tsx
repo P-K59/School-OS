@@ -62,6 +62,8 @@ export default function SchoolDetailsPage() {
   const schoolId = params.schoolId as string;
 
   const {
+    activeSchool,
+    setActiveSchool,
     schools,
     courses,
     pricingRules,
@@ -91,6 +93,13 @@ export default function SchoolDetailsPage() {
     return schools.find(s => s.id === schoolId || s.code === schoolId || s.registrationId === schoolId) || null;
   }, [schools, schoolId]);
 
+  // Keep activeSchool in AuthContext in sync with the school being viewed in this page
+  React.useEffect(() => {
+    if (school && activeSchool?.id !== school.id) {
+      setActiveSchool(school, true);
+    }
+  }, [school, activeSchool?.id, setActiveSchool]);
+
   // Edit School Profile Modal
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -111,6 +120,37 @@ export default function SchoolDetailsPage() {
     contractEndDate: school?.contractEndDate || '',
     notes: school?.notes || '',
   });
+
+  // Keep edit form fields in sync when school changes or route transitions
+  React.useEffect(() => {
+    if (school) {
+      setEditForm({
+        name: school.name || '',
+        email: school.email || '',
+        phone: school.phone || '',
+        principalName: school.principalName || '',
+        contactPersonName: school.contactPersonName || '',
+        contactPersonPhone: school.contactPersonPhone || '',
+        contactPersonEmail: school.contactPersonEmail || '',
+        city: school.city || '',
+        state: school.state || '',
+        address: school.address || '',
+        postalCode: school.postalCode || '',
+        totalStudents: school.totalStudents || 0,
+        totalStaff: school.totalStaff || 0,
+        contractStartDate: school.contractStartDate || '',
+        contractEndDate: school.contractEndDate || '',
+        notes: school.notes || '',
+      });
+      setIsEditOpen(false);
+      setIsDeleteModalOpen(false);
+      setIsWelcomeKitOpen(false);
+      setIsSuspensionModalOpen(false);
+      setIsReassignPrincipalOpen(false);
+      setIsTransferAdminOpen(false);
+      setIsReassignTrainerOpen(false);
+    }
+  }, [school]);
 
   // Delete School State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);

@@ -32,6 +32,8 @@ export default function SchoolTrainerAllocationPage() {
   const schoolId = params.schoolId as string;
 
   const {
+    activeSchool,
+    setActiveSchool,
     schools,
     courses,
     trainers,
@@ -43,6 +45,13 @@ export default function SchoolTrainerAllocationPage() {
   const school = useMemo(() => {
     return schools.find(s => s.id === schoolId) || schools[0];
   }, [schools, schoolId]);
+
+  // Keep activeSchool in AuthContext in sync with the school being viewed in this page
+  React.useEffect(() => {
+    if (school && activeSchool?.id !== school.id) {
+      setActiveSchool(school, true);
+    }
+  }, [school, activeSchool?.id, setActiveSchool]);
 
   // Active allocations for this specific school
   const allocations = useMemo(() => {

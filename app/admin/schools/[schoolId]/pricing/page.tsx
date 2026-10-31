@@ -36,6 +36,8 @@ export default function SchoolCoursePricingPage() {
   const schoolId = params.schoolId as string;
 
   const {
+    activeSchool,
+    setActiveSchool,
     schools,
     courses,
     pricingRules,
@@ -50,6 +52,13 @@ export default function SchoolCoursePricingPage() {
   const school = useMemo(() => {
     return schools.find(s => s.id === schoolId) || schools[0];
   }, [schools, schoolId]);
+
+  // Keep activeSchool in AuthContext in sync with the school being viewed in this page
+  React.useEffect(() => {
+    if (school && activeSchool?.id !== school.id) {
+      setActiveSchool(school, true);
+    }
+  }, [school, activeSchool?.id, setActiveSchool]);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');

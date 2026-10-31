@@ -1,11 +1,15 @@
 "use client";
 
 import React from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { isRealSchool } from '@/lib/db/mock-data';
-import { School as SchoolIcon, ChevronDown, Check, Lock, ShieldCheck } from 'lucide-react';
+import { School } from '@/lib/types';
+import { ChevronDown, Check, Lock, ShieldCheck } from 'lucide-react';
 
 export function TenantSwitcher() {
+  const router = useRouter();
+  const pathname = usePathname();
   const { activeSchool, setActiveSchool, schools, role } = useAuth();
   const [isOpen, setIsOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
@@ -16,7 +20,32 @@ export function TenantSwitcher() {
 
   const isSuperAdmin = mounted && role === 'SUPER_ADMIN';
   const realSchools = React.useMemo(() => schools.filter(isRealSchool), [schools]);
-  const currentSchool = isRealSchool(activeSchool) ? activeSchool : (realSchools[0] || activeSchool);
+  const availableSchools = realSchools.length > 0 ? realSchools : schools;
+  const currentSchool = isRealSchool(activeSchool) ? activeSchool : (availableSchools[0] || activeSchool);
+
+  const handleSelectSchool = (school: School) => {
+    setActiveSchool(school, true);
+    setIsOpen(false);
+
+    // If currently on any /admin/schools/[schoolId]/* page (e.g. details, pricing, courses, trainers)
+    if (pathname.includes('/admin/schools/')) {
+      const parts = pathname.split('/');
+      const schoolsIdx = parts.indexOf('schools');
+      if (schoolsIdx !== -1 && parts.length > schoolsIdx + 1 && parts[schoolsIdx + 1] !== 'new') {
+        parts[schoolsIdx + 1] = school.id;
+        const newPath = parts.join('/');
+        const search = typeof window !== 'undefined' ? window.location.search : '';
+        router.push(`${newPath}${search}`);
+        return;
+      }
+    }
+
+    // If currently anywhere else in Super Admin HQ (/admin, /admin/schools, /admin/dashboard, etc.)
+    if (pathname.startsWith('/admin')) {
+      router.push(`/admin/schools/${school.id}`);
+      return;
+    }
+  };
 
   // For non-Super Admins (School Admin/Principal, Teachers, Students, Parents) or during initial hydration:
   // Show a strictly LOCKED, read-only tenant badge.
@@ -24,15 +53,15 @@ export function TenantSwitcher() {
     return (
       <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 shadow-xs select-none">
         <div className="w-6 h-6 rounded-lg bg-indigo-100 border border-indigo-200 text-indigo-800 flex items-center justify-center font-extrabold text-[11px]">
-          {currentSchool.name.charAt(0)}
+          {currentSchool?.name?.charAt(0) || 'S'}
         </div>
         <div className="flex flex-col text-left">
           <span className="font-bold text-slate-900 truncate max-w-[150px]">
-            {currentSchool.name}
+            {currentSchool?.name || 'School OS'}
           </span>
           <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
             <Lock className="w-2.5 h-2.5 text-slate-400" />
-            {currentSchool.code} (Locked)
+            {currentSchool?.code || 'LOCKED'} (Locked)
           </span>
         </div>
       </div>
@@ -44,14 +73,14 @@ export function TenantSwitcher() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 text-xs font-semibold text-purple-900 hover:bg-purple-100/80 transition-all shadow-xs"
+        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 text-xs font-semibold text-purple-900 hover:bg-purple-100/80 transition-all shadow-xs cursor-pointer"
       >
         <div className="w-6 h-6 rounded-lg bg-purple-200 border border-purple-300 text-purple-900 flex items-center justify-center font-extrabold text-[11px]">
-          {currentSchool.name.charAt(0)}
+          {currentSchool?.name?.charAt(0) || 'S'}
         </div>
         <div className="flex flex-col text-left">
           <span className="font-bold text-purple-950 truncate max-w-[150px]">
-            {currentSchool.name}
+            {currentSchool?.name || 'School'}
           </span>
           <span className="text-[10px] text-purple-700 font-semibold flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 text-purple-600" />
@@ -70,16 +99,13 @@ export function TenantSwitcher() {
               Super Admin Multi-Tenant Switcher
             </div>
             <div className="space-y-1">
-              {realSchools.map((school) => {
-                const isSelected = school.id === currentSchool.id;
+              {availableSchools.map((school) => {
+                const isSelected = school.id === currentSchool?.id;
                 return (
                   <button
                     key={school.id}
-                    onClick={() => {
-                      setActiveSchool(school, true);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left text-xs transition-colors ${
+                    onClick={() => handleSelectSchool(school)}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left text-xs transition-colors cursor-pointer ${
                       isSelected
                         ? "bg-purple-50 text-purple-950 font-bold border border-purple-200"
                         : "hover:bg-slate-50 text-slate-700 font-medium"

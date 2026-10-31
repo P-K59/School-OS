@@ -119,7 +119,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         subtitle: `Code: ${s.code} • ${s.city}, ${s.state} • ${s.schoolType} Board • ${s.totalStudents} Students`,
         category: 'Partner Schools',
         icon: Building2,
-        href: '/admin/schools',
+        href: `/admin/schools/${s.id}`,
         hint: `Manage ${s.name}`
       }));
 
