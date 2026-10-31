@@ -54,43 +54,45 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json();
     const { schoolId, action, reason, schoolSnapshot, ...updates } = body;
-    if (!schoolId) {
+    const targetSchoolId = schoolId || body.id;
+    if (!targetSchoolId) {
       return NextResponse.json({ error: 'Missing required field: schoolId' }, { status: 400 });
     }
+    const act = (action || '').toLowerCase().trim();
 
-    if (action === 'approve') {
-      const result = await serverDb.approveSchool(schoolId, auth?.email || auth?.userId || 'Super Admin HQ', schoolSnapshot);
+    if (act === 'approve') {
+      const result = await serverDb.approveSchool(targetSchoolId, auth?.email || auth?.userId || 'Super Admin HQ', schoolSnapshot);
       return NextResponse.json({ success: true, school: result.school, message: 'School approved and activated successfully' });
     }
 
-    if (action === 'reject') {
-      const result = await serverDb.rejectSchool(schoolId, reason, auth?.email || auth?.userId || 'Super Admin HQ', schoolSnapshot);
+    if (act === 'reject') {
+      const result = await serverDb.rejectSchool(targetSchoolId, reason, auth?.email || auth?.userId || 'Super Admin HQ', schoolSnapshot);
       return NextResponse.json({ success: true, school: result.school, message: 'School registration rejected' });
     }
 
-    if (action === 'revoke') {
-      const result = await serverDb.revokeSchoolDeletion(schoolId, body.schoolSnapshot);
+    if (act === 'revoke') {
+      const result = await serverDb.revokeSchoolDeletion(targetSchoolId, body.schoolSnapshot);
       return NextResponse.json({ success: true, school: result.school, message: 'School deletion revoked and tenant restored successfully' });
     }
 
-    if (action === 'suspend') {
-      const result = await serverDb.toggleSchoolSuspension(schoolId, true, reason, auth?.email || auth?.userId || 'Super Admin HQ');
+    if (act === 'suspend') {
+      const result = await serverDb.toggleSchoolSuspension(targetSchoolId, true, reason, auth?.email || auth?.userId || 'Super Admin HQ');
       return NextResponse.json({ success: true, school: result.school, message: 'School portal suspended successfully' });
     }
 
-    if (action === 'activate' || action === 'unsuspend' || action === 'resume') {
-      const result = await serverDb.toggleSchoolSuspension(schoolId, false, reason, auth?.email || auth?.userId || 'Super Admin HQ');
+    if (act === 'activate' || act === 'unsuspend' || act === 'resume') {
+      const result = await serverDb.toggleSchoolSuspension(targetSchoolId, false, reason, auth?.email || auth?.userId || 'Super Admin HQ');
       return NextResponse.json({ success: true, school: result.school, message: 'School suspension lifted and portal reactivated successfully' });
     }
 
-    if (action === 'dispatch_welcome_kit') {
-      const result = await serverDb.recordWelcomeKitDispatched(schoolId, auth?.email || auth?.userId || 'Super Admin HQ');
+    if (act === 'dispatch_welcome_kit') {
+      const result = await serverDb.recordWelcomeKitDispatched(targetSchoolId, auth?.email || auth?.userId || 'Super Admin HQ');
       return NextResponse.json({ success: true, school: result.school, message: 'Welcome Kit dispatched and logged successfully' });
     }
 
-    if (action === 'reassign_principal') {
+    if (act === 'reassign_principal') {
       const result = await serverDb.reassignSchoolPrincipal(
-        schoolId,
+        targetSchoolId,
         body.principalData || {
           firstName: body.firstName || 'Principal',
           lastName: body.lastName || 'Director',

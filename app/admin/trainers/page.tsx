@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from 'react';
@@ -193,9 +194,8 @@ export default function GlobalTrainersRosterPage() {
                   </div>
                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${
-                        workloadPercent > 85 ? 'bg-rose-500' : workloadPercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
+                      className={`h-full rounded-full transition-all ${workloadPercent > 85 ? 'bg-rose-500' : workloadPercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
                       style={{ width: `${workloadPercent}%` }}
                     />
                   </div>

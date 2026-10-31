@@ -845,61 +845,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       const [schoolsRes, studentsRes, feesRes, coursesRes, trainersRes] = await Promise.all([
-        fetch('/api/schools', { headers }).catch(e => { throw new Error(`Schools API network error: ${e.message}`); }),
-        fetch(`/api/students?schoolId=${activeSchool.id}`, { headers }).catch(e => { throw new Error(`Students API network error: ${e.message}`); }),
-        fetch(`/api/fees?schoolId=${activeSchool.id}`, { headers }).catch(e => { throw new Error(`Fees API network error: ${e.message}`); }),
-        fetch('/api/courses', { headers }).catch(e => { throw new Error(`Courses API network error: ${e.message}`); }),
+        fetch('/api/schools', { headers }).catch(() => null),
+        fetch(`/api/students?schoolId=${activeSchool.id}`, { headers }).catch(() => null),
+        fetch(`/api/fees?schoolId=${activeSchool.id}`, { headers }).catch(() => null),
+        fetch('/api/courses', { headers }).catch(() => null),
         fetch('/api/trainers', { headers }).catch(() => null)
       ]);
 
-      if (!schoolsRes.ok) {
-        const err = await schoolsRes.json().catch(() => ({}));
-        throw new Error(err.error || `Schools API returned HTTP ${schoolsRes.status}`);
-      }
-      if (!studentsRes.ok) {
-        const err = await studentsRes.json().catch(() => ({}));
-        throw new Error(err.error || `Students API returned HTTP ${studentsRes.status}`);
-      }
-      if (!feesRes.ok) {
-        const err = await feesRes.json().catch(() => ({}));
-        throw new Error(err.error || `Fees API returned HTTP ${feesRes.status}`);
-      }
-
-      const schoolsData = await schoolsRes.json();
-      const studentsData = await studentsRes.json();
-      const feesData = await feesRes.json();
-      const coursesData = coursesRes.ok ? await coursesRes.json() : { courses: [] };
-      const trainersData = trainersRes && trainersRes.ok ? await trainersRes.json() : null;
-
-      if (schoolsData.schools) {
-        let deletedSchoolIds = new Set<string>();
-        if (typeof window !== 'undefined') {
-          try {
-            const raw = localStorage.getItem('school_os_deleted_school_ids');
-            if (raw) {
-              const arr = JSON.parse(raw);
-              if (Array.isArray(arr)) arr.forEach((id: string) => deletedSchoolIds.add(id));
-            }
-          } catch {}
+      if (schoolsRes && schoolsRes.ok) {
+        const schoolsData = await schoolsRes.json();
+        if (schoolsData && Array.isArray(schoolsData.schools)) {
+          let deletedSchoolIds = new Set<string>();
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem('school_os_deleted_school_ids');
+              if (raw) {
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr)) arr.forEach((id: string) => deletedSchoolIds.add(id));
+              }
+            } catch {}
+          }
+          const cleanSchools = schoolsData.schools.filter((s: School) => 
+            s && s.id && !deletedSchoolIds.has(s.id) && !deletedSchoolIds.has(s.code) && !deletedSchoolIds.has(s.registrationId || '')
+          );
+          if (cleanSchools.length > 0) {
+            setSchools(cleanSchools);
+            persistSchoolsToAllKeys(cleanSchools);
+          }
         }
-        const cleanSchools = schoolsData.schools.filter((s: School) => 
-          s && s.id && !deletedSchoolIds.has(s.id) && !deletedSchoolIds.has(s.code) && !deletedSchoolIds.has(s.registrationId || '')
-        );
-        setSchools(cleanSchools);
-        persistSchoolsToAllKeys(cleanSchools);
       }
-      if (studentsData.students) setStudentsList(studentsData.students);
-      if (feesData.invoices) setInvoicesList(feesData.invoices);
-      if (feesData.receipts) setPaymentReceiptsList(feesData.receipts);
-      if (feesData.feeStructures) setFeeStructuresList(feesData.feeStructures);
-      if (coursesData.courses && coursesData.courses.length > 0) setCoursesList(coursesData.courses);
-      if (trainersData && Array.isArray(trainersData.trainers)) {
-        setTrainersList(trainersData.trainers);
-        try { localStorage.setItem('school_os_trainers', JSON.stringify(trainersData.trainers)); } catch {}
+
+      if (studentsRes && studentsRes.ok) {
+        const studentsData = await studentsRes.json();
+        if (studentsData.students) setStudentsList(studentsData.students);
       }
-      if (trainersData && Array.isArray(trainersData.allocations)) {
-        setAllocationsList(trainersData.allocations);
-        try { localStorage.setItem('school_os_allocations', JSON.stringify(trainersData.allocations)); } catch {}
+
+      if (feesRes && feesRes.ok) {
+        const feesData = await feesRes.json();
+        if (feesData.invoices) setInvoicesList(feesData.invoices);
+        if (feesData.receipts) setPaymentReceiptsList(feesData.receipts);
+        if (feesData.feeStructures) setFeeStructuresList(feesData.feeStructures);
+      }
+
+      if (coursesRes && coursesRes.ok) {
+        const coursesData = await coursesRes.json();
+        if (coursesData.courses && coursesData.courses.length > 0) setCoursesList(coursesData.courses);
+      }
+
+      if (trainersRes && trainersRes.ok) {
+        const trainersData = await trainersRes.json();
+        if (trainersData && Array.isArray(trainersData.trainers)) {
+          setTrainersList(trainersData.trainers);
+          try { localStorage.setItem('school_os_trainers', JSON.stringify(trainersData.trainers)); } catch {}
+        }
+        if (trainersData && Array.isArray(trainersData.allocations)) {
+          setAllocationsList(trainersData.allocations);
+          try { localStorage.setItem('school_os_allocations', JSON.stringify(trainersData.allocations)); } catch {}
+        }
       }
     } catch (err: any) {
       console.error('[Production Data Sync Error]', err);

@@ -409,6 +409,12 @@ class ProductionDatabaseManager {
         const { data, error } = await supabaseAdmin.from('schools').select('*');
         if (!error && Array.isArray(data) && data.length > 0) {
           for (const row of data) {
+            const mappedStatus = 
+              row.onboarding_status === 'ONBOARDING' ? 'PENDING_APPROVAL' :
+              row.onboarding_status === 'ACTIVE' ? 'ACTIVE' :
+              row.onboarding_status === 'SUSPENDED' ? 'SUSPENDED' :
+              (row.is_active ? 'ACTIVE' : 'PENDING_APPROVAL');
+
             const mapped: School = {
               id: row.id,
               registrationId: row.registration_id || row.code,
@@ -416,7 +422,7 @@ class ProductionDatabaseManager {
               name: row.name,
               schoolType: row.school_type || 'CBSE',
               email: row.email,
-              phone: row.phone,
+              phone: row.phone || '',
               address: row.address || '',
               city: row.city || 'Delhi',
               state: row.state || 'Delhi',
@@ -424,22 +430,23 @@ class ProductionDatabaseManager {
               postalCode: row.postal_code || '110001',
               isActive: Boolean(row.is_active),
               isDemo: false,
-              totalStudents: row.total_students || 0,
-              totalStaff: row.total_staff || 1,
-              enrolledCoursesCount: row.enrolled_courses_count || 0,
+              totalStudents: 0,
+              totalStaff: 1,
+              enrolledCoursesCount: 0,
               createdAt: row.created_at || new Date().toISOString(),
-              onboardingStatus: row.onboarding_status || (row.is_active ? 'ACTIVE' : 'PENDING_APPROVAL'),
-              approvalDetails: row.approval_details || {
-                status: row.is_active ? 'APPROVED' : 'PENDING',
-                submittedAt: row.created_at
+              onboardingStatus: mappedStatus,
+              approvalDetails: {
+                status: (mappedStatus === 'ACTIVE' || row.is_active) ? 'APPROVED' : 'PENDING',
+                submittedAt: row.created_at,
+                reviewedAt: row.updated_at
               },
               academicSession: row.academic_session || '2026-2027',
-              adminCredentials: row.admin_credentials || {
+              adminCredentials: {
                 loginId: row.email,
                 email: row.email,
-                temporaryPassword: 'password123',
+                temporaryPassword: `${(row.code || 'Admin').replace(/[^a-zA-Z0-9]/g, '')}#Admin2026`,
                 generatedAt: row.created_at,
-                provisionedBy: 'Supabase Database'
+                provisionedBy: 'InnovatMind Central Platform'
               }
             };
             const existingIdx = this.schools.findIndex(s => s.id === mapped.id || s.code === mapped.code || (s.registrationId && s.registrationId === mapped.registrationId));
@@ -470,6 +477,12 @@ class ProductionDatabaseManager {
           : `code.ilike.${schoolId},registration_id.ilike.${schoolId}`;
         const { data, error } = await supabaseAdmin.from('schools').select('*').or(filter).maybeSingle();
         if (data && !error) {
+          const mappedStatus = 
+            data.onboarding_status === 'ONBOARDING' ? 'PENDING_APPROVAL' :
+            data.onboarding_status === 'ACTIVE' ? 'ACTIVE' :
+            data.onboarding_status === 'SUSPENDED' ? 'SUSPENDED' :
+            (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL');
+
           const mapped: School = {
             id: data.id,
             registrationId: data.registration_id || data.code,
@@ -477,7 +490,7 @@ class ProductionDatabaseManager {
             name: data.name,
             schoolType: data.school_type || 'CBSE',
             email: data.email,
-            phone: data.phone,
+            phone: data.phone || '',
             address: data.address || '',
             city: data.city || 'Delhi',
             state: data.state || 'Delhi',
@@ -485,14 +498,15 @@ class ProductionDatabaseManager {
             postalCode: data.postal_code || '110001',
             isActive: Boolean(data.is_active),
             isDemo: false,
-            totalStudents: data.total_students || 0,
-            totalStaff: data.total_staff || 1,
-            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            totalStudents: 0,
+            totalStaff: 1,
+            enrolledCoursesCount: 0,
             createdAt: data.created_at || new Date().toISOString(),
-            onboardingStatus: data.onboarding_status || (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL'),
-            approvalDetails: data.approval_details || {
-              status: data.is_active ? 'APPROVED' : 'PENDING',
-              submittedAt: data.created_at
+            onboardingStatus: mappedStatus,
+            approvalDetails: {
+              status: (mappedStatus === 'ACTIVE' || data.is_active) ? 'APPROVED' : 'PENDING',
+              submittedAt: data.created_at,
+              reviewedAt: data.updated_at
             }
           };
           this.schools.push(mapped);
@@ -554,6 +568,12 @@ class ProductionDatabaseManager {
           .maybeSingle();
 
         if (data && !error) {
+          const mappedStatus = 
+            data.onboarding_status === 'ONBOARDING' ? 'PENDING_APPROVAL' :
+            data.onboarding_status === 'ACTIVE' ? 'ACTIVE' :
+            data.onboarding_status === 'SUSPENDED' ? 'SUSPENDED' :
+            (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL');
+
           matched = {
             id: data.id,
             registrationId: data.registration_id || data.code,
@@ -561,7 +581,7 @@ class ProductionDatabaseManager {
             name: data.name,
             schoolType: data.school_type || 'CBSE',
             email: data.email,
-            phone: data.phone,
+            phone: data.phone || '',
             address: data.address || '',
             city: data.city || 'Delhi',
             state: data.state || 'Delhi',
@@ -569,14 +589,15 @@ class ProductionDatabaseManager {
             postalCode: data.postal_code || '110001',
             isActive: Boolean(data.is_active),
             isDemo: false,
-            totalStudents: data.total_students || 0,
-            totalStaff: data.total_staff || 1,
-            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            totalStudents: 0,
+            totalStaff: 1,
+            enrolledCoursesCount: 0,
             createdAt: data.created_at || new Date().toISOString(),
-            onboardingStatus: data.onboarding_status || (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL'),
-            approvalDetails: data.approval_details || {
-              status: data.is_active ? 'APPROVED' : 'PENDING',
-              submittedAt: data.created_at
+            onboardingStatus: mappedStatus,
+            approvalDetails: {
+              status: (mappedStatus === 'ACTIVE' || data.is_active) ? 'APPROVED' : 'PENDING',
+              submittedAt: data.created_at,
+              reviewedAt: data.updated_at
             }
           };
           this.schools.push(matched);
@@ -721,6 +742,10 @@ class ProductionDatabaseManager {
     // Also attempt Supabase insert if available
     try {
       if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        const sbOnboardingStatus = 
+          newSchool.onboardingStatus === 'ACTIVE' ? 'ACTIVE' :
+          newSchool.onboardingStatus === 'SUSPENDED' ? 'SUSPENDED' : 'ONBOARDING';
+
         const { error: sbErr } = await supabaseAdmin.from('schools').insert([{
           id: newSchool.id,
           registration_id: newSchool.registrationId,
@@ -735,9 +760,10 @@ class ProductionDatabaseManager {
           email: newSchool.email,
           school_type: newSchool.schoolType,
           is_active: newSchool.isActive,
-          onboarding_status: newSchool.onboardingStatus,
-          approval_details: newSchool.approvalDetails,
-          created_at: newSchool.createdAt
+          onboarding_status: sbOnboardingStatus,
+          academic_session: newSchool.academicSession || '2026-2027',
+          created_at: newSchool.createdAt,
+          updated_at: newSchool.createdAt
         }]);
         if (sbErr) {
           console.warn('[serverDb.createSchool] Supabase insert warning:', sbErr.message);
@@ -795,6 +821,12 @@ class ProductionDatabaseManager {
           .or(orFilter)
           .maybeSingle();
         if (data) {
+          const mappedStatus = 
+            data.onboarding_status === 'ONBOARDING' ? 'PENDING_APPROVAL' :
+            data.onboarding_status === 'ACTIVE' ? 'ACTIVE' :
+            data.onboarding_status === 'SUSPENDED' ? 'SUSPENDED' :
+            (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL');
+
           school = {
             id: data.id,
             registrationId: data.registration_id || data.code,
@@ -802,7 +834,7 @@ class ProductionDatabaseManager {
             name: data.name,
             schoolType: data.school_type || 'CBSE',
             email: data.email,
-            phone: data.phone,
+            phone: data.phone || '',
             address: data.address || '',
             city: data.city || 'Delhi',
             state: data.state || 'Delhi',
@@ -810,11 +842,16 @@ class ProductionDatabaseManager {
             postalCode: data.postal_code || '110001',
             isActive: Boolean(data.is_active),
             isDemo: false,
-            totalStudents: data.total_students || 0,
-            totalStaff: data.total_staff || 1,
-            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            totalStudents: 0,
+            totalStaff: 1,
+            enrolledCoursesCount: 0,
             createdAt: data.created_at || new Date().toISOString(),
-            onboardingStatus: data.onboarding_status || 'PENDING_APPROVAL'
+            onboardingStatus: mappedStatus,
+            approvalDetails: {
+              status: (mappedStatus === 'ACTIVE' || data.is_active) ? 'APPROVED' : 'PENDING',
+              submittedAt: data.created_at,
+              reviewedAt: data.updated_at
+            }
           };
           this.schools.push(school);
         }
@@ -934,15 +971,19 @@ class ProductionDatabaseManager {
         const updatePayload = {
           is_active: true,
           onboarding_status: 'ACTIVE',
-          approval_details: updated.approvalDetails
+          updated_at: reviewedAt
         };
         if (isIdUuid) {
-          await supabaseAdmin.from('schools').update(updatePayload).eq('id', school.id);
+          const { error } = await supabaseAdmin.from('schools').update(updatePayload).eq('id', school.id);
+          if (error) console.warn('[serverDb.approveSchool] Supabase update error:', error.message);
         } else if (school.code) {
-          await supabaseAdmin.from('schools').update(updatePayload).eq('code', school.code);
+          const { error } = await supabaseAdmin.from('schools').update(updatePayload).eq('code', school.code);
+          if (error) console.warn('[serverDb.approveSchool] Supabase update error:', error.message);
         }
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn('[serverDb.approveSchool] Supabase error:', err.message);
+    }
 
     return { success: true, school: updated };
   }
@@ -968,6 +1009,12 @@ class ProductionDatabaseManager {
           .or(orFilter)
           .maybeSingle();
         if (data) {
+          const mappedStatus = 
+            data.onboarding_status === 'ONBOARDING' ? 'PENDING_APPROVAL' :
+            data.onboarding_status === 'ACTIVE' ? 'ACTIVE' :
+            data.onboarding_status === 'SUSPENDED' ? 'SUSPENDED' :
+            (data.is_active ? 'ACTIVE' : 'PENDING_APPROVAL');
+
           school = {
             id: data.id,
             registrationId: data.registration_id || data.code,
@@ -975,7 +1022,7 @@ class ProductionDatabaseManager {
             name: data.name,
             schoolType: data.school_type || 'CBSE',
             email: data.email,
-            phone: data.phone,
+            phone: data.phone || '',
             address: data.address || '',
             city: data.city || 'Delhi',
             state: data.state || 'Delhi',
@@ -983,9 +1030,9 @@ class ProductionDatabaseManager {
             postalCode: data.postal_code || '110001',
             isActive: false,
             isDemo: false,
-            totalStudents: data.total_students || 0,
-            totalStaff: data.total_staff || 1,
-            enrolledCoursesCount: data.enrolled_courses_count || 0,
+            totalStudents: 0,
+            totalStaff: 1,
+            enrolledCoursesCount: 0,
             createdAt: data.created_at || new Date().toISOString(),
             onboardingStatus: 'REJECTED'
           };
@@ -1044,8 +1091,8 @@ class ProductionDatabaseManager {
         const isIdUuid = isUuid(school.id);
         const updatePayload = {
           is_active: false,
-          onboarding_status: 'REJECTED',
-          approval_details: updated.approvalDetails
+          onboarding_status: 'SUSPENDED',
+          updated_at: reviewedAt
         };
         if (isIdUuid) {
           await supabaseAdmin.from('schools').update(updatePayload).eq('id', school.id);
@@ -1183,8 +1230,13 @@ class ProductionDatabaseManager {
 
     // 4. Also issue delete to Supabase if connected
     try {
-      if (supabase && typeof supabase.from === 'function') {
-        await supabase.from('schools').delete().eq('id', schoolId);
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        const isIdUuid = isUuid(schoolId);
+        if (isIdUuid) {
+          await supabaseAdmin.from('schools').delete().eq('id', schoolId);
+        } else if (targetSchool.code) {
+          await supabaseAdmin.from('schools').delete().eq('code', targetSchool.code);
+        }
       }
     } catch {}
 
