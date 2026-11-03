@@ -435,7 +435,7 @@ function LoginForm() {
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Password / Cadet ID
+                  Password
                 </button>
               </div>
 
@@ -601,7 +601,7 @@ function LoginForm() {
                   {/* Email or Username */}
                   <div className="space-y-1.5">
                     <label htmlFor="user-identifier" className="text-xs font-bold text-slate-700 block text-left">
-                      Email or Cadet Login ID
+                      Email Address
                     </label>
                     <div className="relative">
                       <input
@@ -610,7 +610,7 @@ function LoginForm() {
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
                         className="w-full h-11 bg-slate-50/70 border border-slate-200 rounded-xl pl-10 pr-4 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all font-sans"
-                        placeholder="e.g. principal@institution.edu or STU-2026-00001"
+                        placeholder="e.g. pkvbspu2020@gmail.com"
                         required
                         autoComplete="username"
                       />
@@ -744,18 +744,14 @@ function LoginForm() {
                 </Link>
               </div>
 
-              {/* Discreet Demo Preview Link to Landing Page (Only in non-Cognito mode) */}
-              {authProvider !== 'COGNITO' && (
-                <div className="mt-2 text-center">
-                  <Link
-                    href="/?demo=open"
-                    className="text-xs text-slate-500 hover:text-blue-600 font-semibold transition-colors inline-flex items-center gap-1 group"
-                  >
-                    <span>Looking for the Demo Preview? Explore sample sandbox on Home Page</span>
-                    <span className="group-hover:translate-x-0.5 transition-transform">&rarr;</span>
-                  </Link>
-                </div>
-              )}
+              <div className="mt-2 text-center">
+                <Link
+                  href="/?demo=open"
+                  className="text-xs text-slate-400 hover:text-blue-600 transition-colors inline-flex items-center gap-1"
+                >
+                  <span>Looking for Demo Preview? Explore on Home Page &rarr;</span>
+                </Link>
+              </div>
 
               {/* Terms of Service & Privacy Policy */}
               <p className="text-[11px] text-slate-400 text-center mt-4 leading-normal">
