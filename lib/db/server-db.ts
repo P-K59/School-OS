@@ -664,8 +664,8 @@ class ProductionDatabaseManager {
     const adminEmail = (
       schoolData.adminCredentials?.email || 
       schoolData.email || 
-      schoolData.contactEmail || 
-      schoolData.contactPersonEmail || 
+      (schoolData as any).contactEmail || 
+      (schoolData as any).contactPersonEmail || 
       ''
     ).trim().toLowerCase();
 
@@ -677,8 +677,8 @@ class ProductionDatabaseManager {
 
     const phoneVal = (
       schoolData.phone || 
-      schoolData.contactPhone || 
-      schoolData.contactPersonPhone || 
+      (schoolData as any).contactPhone || 
+      (schoolData as any).contactPersonPhone || 
       '+91 98000 00000'
     ).trim();
 
@@ -2556,6 +2556,10 @@ class ProductionDatabaseManager {
 
   async getPricingRules(): Promise<PricingRule[]> {
     return [...this.pricingRules];
+  }
+
+  getUserProfiles(): UserProfile[] {
+    return [...this.userProfiles];
   }
 
   async getTrainers(): Promise<TrainerProfile[]> {

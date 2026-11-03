@@ -88,6 +88,7 @@ import {
   resolveStorageKey
 } from '../config/data-mode';
 import { generateUniqueRegistrationId, productionService } from '../supabase/service';
+import { supabase } from '../supabase/client';
 
 interface AuthContextType {
   // Central Data Environment (Demo Sandbox vs Live Production Database vs AWS Cognito)
@@ -111,7 +112,10 @@ interface AuthContextType {
   schools: School[];
   
   // Authentication Actions
+  establishSession: (profile: UserProfile) => void;
   login: (identifier: string, password?: string, targetSchoolId?: string) => Promise<{ success: boolean; user?: UserProfile; error?: string; code?: string }>;
+  sendOtp: (email: string) => Promise<{ success: boolean; message?: string; error?: string; code?: string }>;
+  verifyOtp: (email: string, token: string) => Promise<{ success: boolean; user?: UserProfile; error?: string; code?: string }>;
   loginWithGoogle: (email?: string, idToken?: string) => Promise<{
     success: boolean;
     user?: UserProfile;
@@ -398,6 +402,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearDataError = () => setDataError(null);
+
+  const getAuthHeaders = async (includeContentType = true): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {};
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (typeof window !== 'undefined' && supabase && supabase.auth) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.access_token) {
+          headers['Authorization'] = `Bearer ${data.session.access_token}`;
+        }
+      } catch {}
+    }
+    return headers;
+  };
 
   const [schools, setSchools] = useState<School[]>(() => {
     if (typeof window !== 'undefined') {
@@ -838,7 +858,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoadingData(true);
     setDataError(null);
     try {
+      const authHeaders = await getAuthHeaders(false);
       const headers: Record<string, string> = {
+        ...authHeaders,
         'x-user-role': role,
         'x-school-id': activeSchool.id,
         'x-user-id': currentUser?.id || 'usr-current'
@@ -1343,6 +1365,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           }
@@ -1439,6 +1462,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
@@ -1492,6 +1516,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
@@ -1588,6 +1613,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
@@ -1669,6 +1695,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
@@ -1732,6 +1759,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
@@ -2360,6 +2388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           },
@@ -2425,6 +2454,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
+            ...(await getAuthHeaders(false)),
             'x-user-role': 'SUPER_ADMIN',
             'x-user-id': currentUser?.id || 'usr-super'
           }
@@ -2469,6 +2499,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password?: string,
     targetSchoolId?: string
   ): Promise<{ success: boolean; user?: UserProfile; error?: string; code?: string }> => {
+    // In production mode, password login is disabled; require Email OTP or Google Sign-In
+    if (dataMode === 'PRODUCTION') {
+      return {
+        success: false,
+        error: 'Password and Cadet ID login is disabled in production mode. Please use Email OTP or Google Sign-In.',
+        code: 'PASSWORD_LOGIN_DISABLED'
+      };
+    }
+
     if (!identifier || !identifier.trim()) {
       return { success: false, error: 'Please enter your Workspace ID, Student ID, or Email.' };
     }
@@ -2481,7 +2520,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 1. Check Super Admin
     if (raw === 'superadmin@innovatmind.com' || raw === 'superadmin') {
       const superProfile = demoUsers[0];
-      if (password !== 'password123' && superProfile.password !== password) {
+      if (superProfile.password !== password) {
         return { success: false, error: 'Invalid password. Please check your credentials.' };
       }
       if (!superProfile.isActive || (superProfile as any).status === 'SUSPENDED') {
@@ -2508,7 +2547,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       u => u.email.toLowerCase().trim() === raw || u.id.toLowerCase() === raw
     );
     if (matchedDemoUser) {
-      if (password !== 'password123' && matchedDemoUser.password !== password) {
+      if (matchedDemoUser.password !== password) {
         return { success: false, error: 'Invalid password. Please check your credentials.' };
       }
       if (!matchedDemoUser.isActive || (matchedDemoUser as any).status === 'SUSPENDED') {
@@ -2584,11 +2623,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }
     if (matchedSchoolByAdminCreds) {
-      const expectedPassword = matchedSchoolByAdminCreds.adminCredentials?.temporaryPassword || 'password123';
-      const isPasswordValid = 
-        password === 'password123' || 
-        password === expectedPassword || 
-        (matchedSchoolByAdminCreds.email?.toLowerCase() === 'pankaj@nirmaan.org' && (password === 'Pass@1653' || password === 'password123'));
+      const expectedPassword = matchedSchoolByAdminCreds.adminCredentials?.temporaryPassword;
+      const isPasswordValid = Boolean(expectedPassword && password === expectedPassword);
 
       if (!isPasswordValid) {
         return { success: false, error: `Invalid password for ${matchedSchoolByAdminCreds.name}. Please enter your provisioned password.` };
@@ -2698,7 +2734,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const validStudent = matchedStudent || candidateStudents.find(s => s.id === matchedEnrollment?.studentId);
       const studentPassword = validStudent?.credentials?.temporaryPassword || matchedEnrollment?.generatedPassword || 'password123';
       
-      if (password !== 'password123' && password !== studentPassword) {
+      if (password !== studentPassword) {
         return { success: false, error: 'Invalid password for student account.' };
       }
       if (validStudent && (validStudent.status === 'SUSPENDED' || validStudent.provisioningStatus === 'SUSPENDED')) {
@@ -2780,7 +2816,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
     if (matchedStaff) {
       const expectedPassword = matchedStaff.credentials?.temporaryPassword || 'password123';
-      if (password !== 'password123' && password !== expectedPassword) {
+      if (password !== expectedPassword) {
         return { success: false, error: 'Invalid password for faculty/staff account. Please verify your credentials.' };
       }
       if (matchedStaff.status === 'RESIGNED') {
@@ -2823,6 +2859,210 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+  // Passwordless Email OTP Authentication (Primary Authentication Method)
+  const sendOtp = async (rawEmail: string): Promise<{ success: boolean; message?: string; error?: string; code?: string }> => {
+    if (!rawEmail || typeof rawEmail !== 'string' || !rawEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    const email = rawEmail.trim().toLowerCase();
+
+    // 1. Authoritative Pre-validation via Server Identity API
+    try {
+      if (typeof fetch !== 'undefined') {
+        const preCheck = await fetch('/api/auth/otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const preData = await preCheck.json();
+        if (!preCheck.ok || !preData.success) {
+          return {
+            success: false,
+            error: preData.error || 'No authorized account found for this email address.',
+            code: preData.code || 'ACCOUNT_NOT_AUTHORIZED'
+          };
+        }
+      }
+    } catch (e: any) {
+      console.warn('[sendOtp] Pre-validation notice:', e.message);
+    }
+
+    // 2. Dispatch OTP via Supabase Auth with shouldCreateUser: false
+    try {
+      if (supabase && supabase.auth) {
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            shouldCreateUser: false
+          }
+        });
+
+        if (error) {
+          if (error.status === 429 || error.message.includes('rate') || (error as any).code === 'over_email_send_rate_limit') {
+            return {
+              success: false,
+              error: 'Rate limit exceeded. Please wait 60 seconds before requesting another code.',
+              code: 'RATE_LIMITED'
+            };
+          }
+          if (error.message.includes('Signups not allowed') || (error as any).code === 'otp_disabled') {
+            return {
+              success: true,
+              message: `If an authorized account exists for ${email}, a verification code has been dispatched.`
+            };
+          }
+          return {
+            success: false,
+            error: error.message || 'Failed to dispatch verification code.',
+            code: 'OTP_SEND_FAILED'
+          };
+        }
+      }
+
+      return {
+        success: true,
+        message: `A 6-digit verification code has been dispatched to ${email}.`
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Error occurred while dispatching verification code.'
+      };
+    }
+  };
+
+  const verifyOtp = async (rawEmail: string, token: string): Promise<{ success: boolean; user?: UserProfile; error?: string; code?: string }> => {
+    if (!rawEmail || !token) {
+      return { success: false, error: 'Email and verification code are required.' };
+    }
+    const email = rawEmail.trim().toLowerCase();
+    const cleanToken = token.trim();
+
+    try {
+      let accessToken: string | undefined;
+      let authUserId: string | undefined;
+
+      // 1. Verify OTP with Supabase Auth
+      if (supabase && supabase.auth) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token: cleanToken,
+          type: 'email'
+        });
+
+        if (error) {
+          if (error.message.includes('expired') || (error as any).code === 'otp_expired') {
+            return {
+              success: false,
+              error: 'Verification code has expired. Please request a new code.',
+              code: 'OTP_EXPIRED'
+            };
+          }
+          return {
+            success: false,
+            error: 'Invalid verification code. Please check your code and try again.',
+            code: 'INVALID_OTP'
+          };
+        }
+
+        accessToken = data.session?.access_token;
+        authUserId = data.user?.id;
+      }
+
+      // 2. Authoritative Profile Resolution via Server Identity API
+      let resolvedUser: UserProfile | null = null;
+      if (typeof fetch !== 'undefined') {
+        const profileRes = await fetch('/api/auth/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
+          },
+          body: JSON.stringify({ email, authId: authUserId })
+        });
+
+        const profileData = await profileRes.json();
+        if (profileRes.ok && profileData.success && profileData.user) {
+          resolvedUser = profileData.user;
+        } else {
+          if (supabase && supabase.auth) await supabase.auth.signOut().catch(() => {});
+          return {
+            success: false,
+            error: profileData.error || 'Access Denied: Account not authorized on InnovatMind School OS.',
+            code: profileData.code || 'ACCOUNT_NOT_AUTHORIZED'
+          };
+        }
+      }
+
+      if (!resolvedUser) {
+        // Fallback local resolution for test harnesses
+        const localMatch = demoUsers.find(u => u.email.toLowerCase() === email);
+        if (localMatch) {
+          resolvedUser = {
+            id: localMatch.id,
+            role: localMatch.role,
+            schoolId: localMatch.schoolId,
+            firstName: localMatch.firstName,
+            lastName: localMatch.lastName,
+            displayName: `${localMatch.firstName} ${localMatch.lastName}`.trim(),
+            email: localMatch.email,
+            isActive: true,
+            status: 'ACTIVE'
+          };
+        }
+      }
+
+      if (!resolvedUser) {
+        return {
+          success: false,
+          error: 'No application profile found for verified identity.',
+          code: 'ACCOUNT_NOT_AUTHORIZED'
+        };
+      }
+
+      // 3. Establish authoritative application session
+      setCurrentUser(resolvedUser);
+      setRoleState(resolvedUser.role);
+      setIsAuthenticated(true);
+
+      if (resolvedUser.schoolId) {
+        const matchedSchool = schools.find(s => s.id === resolvedUser!.schoolId);
+        if (matchedSchool) {
+          setActiveSchoolState(matchedSchool);
+        }
+      }
+
+      try {
+        localStorage.setItem('school_os_user', JSON.stringify(resolvedUser));
+        if (resolvedUser.schoolId) {
+          localStorage.setItem('school_os_school_id', resolvedUser.schoolId);
+        }
+      } catch {}
+
+      return { success: true, user: resolvedUser };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'OTP verification failed. Please try again.' };
+    }
+  };
+
+  const establishSession = (profile: UserProfile) => {
+    setCurrentUser(profile);
+    setRoleState(profile.role);
+    setIsAuthenticated(true);
+    if (profile.schoolId) {
+      const match = schools.find(s => s.id === profile.schoolId);
+      if (match) setActiveSchoolState(match);
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('school_os_user', JSON.stringify(profile));
+        if (profile.schoolId) {
+          localStorage.setItem('school_os_school_id', profile.schoolId);
+        }
+      } catch {}
+    }
+  };
+
   // Google OAuth & Federated Identity Sign-In
   const loginWithGoogle = async (
     email?: string,
@@ -2833,7 +3073,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error?: string;
     code?: 'OAUTH_CONFIG_MISSING' | 'ACCOUNT_NOT_LINKED' | 'USER_SUSPENDED' | 'AUTH_FAILED' | 'PENDING_APPROVAL';
   }> => {
+    // If called without arguments in browser, trigger real Supabase Google OAuth
     if (!email || !email.trim()) {
+      if (typeof window !== 'undefined' && supabase && supabase.auth) {
+        try {
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: `${window.location.origin}/auth/callback`
+            }
+          });
+          if (error) {
+            return {
+              success: false,
+              error: error.message || 'Google OAuth failed to initialize.',
+              code: 'AUTH_FAILED'
+            };
+          }
+          return { success: true };
+        } catch (e: any) {
+          return {
+            success: false,
+            error: e.message || 'Google authentication encountered an error.',
+            code: 'AUTH_FAILED'
+          };
+        }
+      }
       return {
         success: false,
         error: 'No Google identity was selected or provided.',
@@ -3070,6 +3335,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Logout handler - complete session invalidation and token purge
   const logout = () => {
+    try {
+      if (typeof window !== 'undefined' && supabase && supabase.auth) {
+        supabase.auth.signOut().catch(() => {});
+      }
+      if (typeof fetch !== 'undefined') {
+        fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      }
+    } catch {}
+
     setCurrentUser(null);
     setIsAuthenticated(false);
     try {
@@ -3077,6 +3351,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('school_os_school_id');
       sessionStorage.clear();
       if (typeof document !== 'undefined') {
+        document.cookie = 'school_os_user=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
         document.cookie = 'school_os_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
       }
     } catch {}
@@ -3322,6 +3597,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(await getAuthHeaders(false)),
           'x-user-role': 'SUPER_ADMIN',
           'x-user-id': currentUser?.id || 'usr-super'
         },
@@ -3370,11 +3646,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Also persist to server database
-    fetch('/api/courses', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
-      body: JSON.stringify({ courseId, pricePerStudent: price })
-    }).catch(() => {});
+    getAuthHeaders(false).then(authHeaders => {
+      fetch('/api/courses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders, 'x-user-role': 'SUPER_ADMIN' },
+        body: JSON.stringify({ courseId, pricePerStudent: price })
+      }).catch(() => {});
+    });
   };
 
   const updateCourse = async (courseId: string, updates: Partial<Course>): Promise<Course> => {
@@ -3384,6 +3662,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(await getAuthHeaders(false)),
           'x-user-role': 'SUPER_ADMIN',
           'x-user-id': currentUser?.id || 'usr-super'
         },
@@ -3462,7 +3741,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/courses', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders(false)), 'x-user-role': 'SUPER_ADMIN' },
         body: JSON.stringify({ courseId, action: isArchived ? 'archive' : 'unarchive' })
       });
       const data = await res.json();
@@ -3490,7 +3769,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/courses', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders(false)), 'x-user-role': 'SUPER_ADMIN' },
         body: JSON.stringify({ action: 'duplicate', courseId })
       });
       const data = await res.json();
@@ -3514,7 +3793,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/courses', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-user-role': 'SUPER_ADMIN' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders(false)), 'x-user-role': 'SUPER_ADMIN' },
         body: JSON.stringify({ courseId, action: isPublished ? 'publish' : 'unpublish' })
       });
       const data = await res.json();
@@ -3563,6 +3842,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          ...(await getAuthHeaders(false)),
           'x-user-role': 'SUPER_ADMIN',
           'x-user-id': currentUser?.id || 'usr-super'
         },
@@ -3610,6 +3890,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          ...(await getAuthHeaders(false)),
           'x-user-role': 'SUPER_ADMIN',
           'x-user-id': currentUser?.id || 'usr-super'
         },
@@ -3640,6 +3921,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          ...(await getAuthHeaders(false)),
           'x-user-role': 'SUPER_ADMIN',
           'x-user-id': currentUser?.id || 'usr-super'
         },
@@ -3824,20 +4106,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Persist to backend database asynchronously
-    fetch('/api/courses/assign-class', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': role,
-        'x-school-id': activeSchool.id
-      },
-      body: JSON.stringify({
-        schoolId: activeSchool.id,
-        courseId,
-        gradeName,
-        selectedStudentIds
-      })
-    }).catch(() => {});
+    getAuthHeaders(false).then(authHeaders => {
+      fetch('/api/courses/assign-class', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          'x-user-role': role,
+          'x-school-id': activeSchool.id
+        },
+        body: JSON.stringify({
+          schoolId: activeSchool.id,
+          courseId,
+          gradeName,
+          selectedStudentIds
+        })
+      }).catch(() => {});
+    });
 
     // Add Audit Event
     const audit: AuditEvent = {
@@ -5353,7 +5638,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         activeSchool,
         setActiveSchool,
         schools,
+        establishSession,
         login,
+        sendOtp,
+        verifyOtp,
         loginWithGoogle,
         loginAsRole,
         registerSchool,

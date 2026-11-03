@@ -4,7 +4,7 @@ import { authenticateRequest, authorizeRole, authorizeSchoolScope } from '@/lib/
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const roleAuth = authorizeRole(auth, ['SUPER_ADMIN', 'SCHOOL_ADMIN']);
     if (roleAuth) return roleAuth;
 
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const roleAuth = authorizeRole(auth, ['SUPER_ADMIN']);
     if (roleAuth) return roleAuth;
 

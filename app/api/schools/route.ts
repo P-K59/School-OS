@@ -4,7 +4,7 @@ import { authenticateRequest, authorizeRole } from '@/lib/auth/server-guard';
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const allSchools = await serverDb.getSchools();
 
     // 1. If authenticated as Super Admin, return all schools with administrative data
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const body = await req.json();
 
     // Super Admin can directly provision ACTIVE schools; public self-registrations strictly require approval
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const roleAuth = authorizeRole(auth, ['SUPER_ADMIN']);
     if (roleAuth) return roleAuth;
 
@@ -134,7 +134,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const roleAuth = authorizeRole(auth, ['SUPER_ADMIN']);
     if (roleAuth) return roleAuth;
 

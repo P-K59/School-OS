@@ -4,7 +4,7 @@ import { authenticateRequest, authorizeRole } from '@/lib/auth/server-guard';
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = authenticateRequest(req);
+    const auth = await authenticateRequest(req);
     const roleAuth = authorizeRole(auth, ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STUDENT']);
     if (roleAuth) return roleAuth;
 
