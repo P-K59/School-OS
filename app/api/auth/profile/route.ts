@@ -89,6 +89,46 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 2b. Auto-provision / Bootstrap Platform Super Admin if not yet in database
+    const isSuperAdminEmail = 
+      emailToResolve === 'pkvbspu2020@gmail.com' || 
+      emailToResolve === 'superadmin@innovatmind.com' ||
+      emailToResolve === 'admin@innovatmind.com';
+
+    if (!trustedProfile && isSuperAdminEmail) {
+      trustedProfile = {
+        id: 'usr-superadmin-pankaj',
+        auth_id: authIdToResolve || undefined,
+        school_id: null,
+        role: 'SUPER_ADMIN',
+        first_name: 'Pankaj',
+        last_name: 'Kumar',
+        email: emailToResolve,
+        phone: '+91 99000 00001',
+        designation: 'Chief Technology Officer / Super Admin',
+        is_active: true
+      };
+
+      // Persist into Supabase public.profiles if supabaseAdmin is configured
+      if (supabaseAdmin && typeof supabaseAdmin.from === 'function') {
+        try {
+          await supabaseAdmin.from('profiles').upsert({
+            auth_id: authIdToResolve || undefined,
+            role: 'SUPER_ADMIN',
+            first_name: 'Pankaj',
+            last_name: 'Kumar',
+            email: emailToResolve,
+            phone: '+91 99000 00001',
+            designation: 'Chief Technology Officer / Super Admin',
+            is_active: true,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'email' });
+        } catch (adminUpsertErr: any) {
+          console.warn('[api/auth/profile] Auto-upsert superadmin notice:', adminUpsertErr.message);
+        }
+      }
+    }
+
     // 3. Fallback: Search in-memory / local serverDb user profiles
     if (!trustedProfile) {
       const serverUsers = serverDb.getUserProfiles();

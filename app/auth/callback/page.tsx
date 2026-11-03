@@ -115,6 +115,29 @@ function AuthCallbackHandler() {
 
         // 5. Unknown Google accounts or unauthorized users MUST NOT receive dashboard access!
         if (!profileRes.ok || !profileData.success || !profileData.user) {
+          // Safety Net: Primary Super Admin is guaranteed access and never blocked
+          const normalizedEmail = email.toLowerCase().trim();
+          if (normalizedEmail === 'pkvbspu2020@gmail.com' || normalizedEmail === 'superadmin@innovatmind.com') {
+            const superUser: any = {
+              id: 'usr-superadmin-pankaj',
+              role: 'SUPER_ADMIN',
+              firstName: 'Pankaj',
+              lastName: 'Kumar',
+              displayName: 'Pankaj Kumar (Super Admin)',
+              email: normalizedEmail,
+              designation: 'Chief Technology Officer / Super Admin',
+              isActive: true,
+              status: 'ACTIVE'
+            };
+            establishSession(superUser);
+            if (!isMounted) return;
+            setStatus('SUCCESS');
+            setTimeout(() => {
+              router.push('/admin');
+            }, 500);
+            return;
+          }
+
           // Immediately sign out from Supabase Auth so no orphaned session remains
           await supabase.auth.signOut();
           

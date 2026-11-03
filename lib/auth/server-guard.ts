@@ -155,6 +155,11 @@ async function resolveProfileFromTrustedSources(
         return { id: demoMatch.id, role, schoolId: demoMatch.schoolId || undefined };
       }
     }
+
+    // 4. Primary Super Admin Bootstrap Fallback
+    if (normalizedEmail === 'pkvbspu2020@gmail.com' || normalizedEmail === 'superadmin@innovatmind.com') {
+      return { id: 'usr-superadmin-pankaj', role: 'SUPER_ADMIN' };
+    }
   }
 
   return null;
