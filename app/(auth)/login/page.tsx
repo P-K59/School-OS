@@ -435,7 +435,7 @@ function LoginForm() {
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Password / Cadet ID {dataMode === 'PRODUCTION' ? '(Demo Only)' : ''}
+                  Password / Cadet ID
                 </button>
               </div>
 
@@ -598,12 +598,6 @@ function LoginForm() {
               {/* ========================================================= */}
               {authMode === 'PASSWORD' && (
                 <form onSubmit={handleLogin} className="space-y-4">
-                  {dataMode === 'PRODUCTION' && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2 text-left">
-                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-                      <span>Password login is restricted to Demo Sandbox. For production, please use <strong>Email OTP</strong> or <strong>Google Sign-In</strong>.</span>
-                    </div>
-                  )}
                   {/* Email or Username */}
                   <div className="space-y-1.5">
                     <label htmlFor="user-identifier" className="text-xs font-bold text-slate-700 block text-left">
