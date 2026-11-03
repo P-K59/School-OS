@@ -317,6 +317,7 @@ class ProductionDatabaseManager {
   private deletedSchoolsArchive: Map<string, School> = new Map();
   private deletedTrainersArchive: Map<string, TrainerProfile> = new Map();
   private deletedCoursesArchive: Map<string, Course> = new Map();
+  private superAdminPassword?: string;
 
   constructor() {
     this.loadFromDisk();
@@ -2508,6 +2509,49 @@ class ProductionDatabaseManager {
     return { success: true, school, message: `Leadership for ${school.name} reassigned to ${newFullName} successfully.` };
   }
 
+  // Update User Password (for Password Reset & Account Recovery)
+  async updateUserPassword(identifier: string, newPassword: string): Promise<boolean> {
+    const raw = identifier.trim().toLowerCase();
+
+    // 1. Super Admin Check
+    if (
+      raw === 'pkvbspu2020@gmail.com' ||
+      raw === 'superadmin@innovatmind.com' ||
+      raw === 'superadmin' ||
+      raw === 'admin@innovatmind.com'
+    ) {
+      this.superAdminPassword = newPassword.trim();
+      this.saveToDisk();
+      return true;
+    }
+
+    // 2. School Admin Check
+    const matchedSchool = this.schools.find(
+      s => (s.adminCredentials?.loginId && s.adminCredentials.loginId.toLowerCase() === raw) ||
+           (s.adminCredentials?.email && s.adminCredentials.email.toLowerCase() === raw) ||
+           (s.email && s.email.toLowerCase() === raw)
+    );
+    if (matchedSchool && matchedSchool.adminCredentials) {
+      matchedSchool.adminCredentials.temporaryPassword = newPassword.trim();
+      this.saveToDisk();
+      return true;
+    }
+
+    // 3. Student Check
+    const matchedStudent = this.students.find(
+      st => (st.credentials?.loginId && st.credentials.loginId.toLowerCase() === raw) ||
+            (st.admissionNumber && st.admissionNumber.toLowerCase() === raw) ||
+            (st.email && st.email.toLowerCase() === raw)
+    );
+    if (matchedStudent && matchedStudent.credentials) {
+      matchedStudent.credentials.temporaryPassword = newPassword.trim();
+      this.saveToDisk();
+      return true;
+    }
+
+    return false;
+  }
+
   // Super Admin: Transfer Administrator User to Another School
   async transferAdministrator(
     userId: string,
@@ -2991,7 +3035,7 @@ class ProductionDatabaseManager {
       raw === 'admin@innovatmind.com' ||
       raw === 'superadmin@schoolos.in'
     ) {
-      if (password && password !== 'admin123' && password !== 'password123') {
+      if (password && password !== 'admin123' && password !== 'password123' && (!this.superAdminPassword || password !== this.superAdminPassword)) {
         return { success: false, error: 'Invalid password for Super Admin' };
       }
       return {

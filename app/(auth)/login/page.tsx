@@ -82,6 +82,8 @@ function LoginForm() {
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   // Cooldown countdown timer for OTP resend
   React.useEffect(() => {
@@ -251,15 +253,48 @@ function LoginForm() {
     }
   };
 
-  const handleForgotPasswordSubmit = (e: React.FormEvent) => {
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgotEmail) return;
-    setForgotSuccess(true);
-    setTimeout(() => {
-      setForgotSuccess(false);
-      setIsForgotModalOpen(false);
-      setForgotEmail('');
-    }, 3000);
+    if (!forgotEmail || !forgotEmail.trim()) return;
+    setForgotError('');
+    setIsForgotLoading(true);
+
+    try {
+      // 1. Dispatch Supabase Password Reset if client is available in browser
+      if (typeof window !== 'undefined' && supabase && supabase.auth) {
+        try {
+          await supabase.auth.resetPasswordForEmail(forgotEmail.trim().toLowerCase(), {
+            redirectTo: `${window.location.origin}/auth/reset-password`
+          });
+        } catch (supaErr: any) {
+          console.warn('[login] Supabase reset notice:', supaErr.message);
+        }
+      }
+
+      // 2. Dispatch via Backend API
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'REQUEST',
+          email: forgotEmail.trim().toLowerCase()
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok && data.error) {
+        setForgotError(data.error);
+        setIsForgotLoading(false);
+        return;
+      }
+
+      setIsForgotLoading(false);
+      setForgotSuccess(true);
+    } catch {
+      setForgotError('Failed to send reset link. Please check your network connection.');
+      setIsForgotLoading(false);
+    }
   };
 
   return (
@@ -826,10 +861,15 @@ function LoginForm() {
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <HelpCircle className="w-5 h-5 text-blue-600" />
-                <h3 className="text-sm font-black text-slate-900">Reset Account Access</h3>
+                <h3 className="text-sm font-black text-slate-900">Reset Password</h3>
               </div>
               <button
-                onClick={() => setIsForgotModalOpen(false)}
+                onClick={() => {
+                  setIsForgotModalOpen(false);
+                  setForgotSuccess(false);
+                  setForgotError('');
+                  setForgotEmail('');
+                }}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -837,31 +877,55 @@ function LoginForm() {
             </div>
 
             {forgotSuccess ? (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs text-center space-y-1">
-                <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-600" />
-                <span className="font-bold block">Password Reset Link Dispatched</span>
-                <p className="text-[11px] text-slate-600">If an authorized profile exists for {forgotEmail}, an invitation has been sent.</p>
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs text-center space-y-2">
+                <CheckCircle2 className="w-7 h-7 mx-auto text-emerald-600" />
+                <span className="font-bold text-sm block text-emerald-900">Password Reset Link Sent!</span>
+                <p className="text-xs text-slate-600">
+                  We've dispatched password reset instructions to <strong className="text-slate-800">{forgotEmail}</strong>. Please check your inbox and click the link to choose a new password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotModalOpen(false);
+                    setForgotSuccess(false);
+                    setForgotEmail('');
+                  }}
+                  className="mt-2 w-full h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Done
+                </button>
               </div>
             ) : (
               <form onSubmit={handleForgotPasswordSubmit} className="space-y-3">
                 <p className="text-xs text-slate-500">
-                  Enter your registered institutional email or Student Cadet Login ID. Your school admin or platform operations will receive an account authorization ticket.
+                  Enter your registered email address. We'll send you a secure link to reset your account password.
                 </p>
+                {forgotError && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{forgotError}</span>
+                  </div>
+                )}
                 <div>
                   <input
-                    type="text"
+                    type="email"
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
-                    placeholder="e.g. principal@institution.edu or Student ID"
+                    placeholder="e.g. pkvbspu2020@gmail.com"
                     className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white"
                     required
                   />
                 </div>
                 <button
                   type="submit"
-                  className="w-full h-10 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs cursor-pointer shadow-md shadow-blue-500/20"
+                  disabled={isForgotLoading}
+                  className="w-full h-10 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs cursor-pointer shadow-md shadow-blue-500/20 disabled:opacity-60 flex items-center justify-center"
                 >
-                  Request Password Reset
+                  {isForgotLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    'Send Password Reset Link'
+                  )}
                 </button>
               </form>
             )}
