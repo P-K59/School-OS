@@ -51,6 +51,24 @@ function AuthCallbackHandler() {
           }
         }
 
+        // 2b. Extract tokens from hash fragment if present (e.g. from Supabase email magic link)
+        if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
+          const hashClean = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash;
+          const hashParams = new URLSearchParams(hashClean);
+          const hashAccessToken = hashParams.get('access_token');
+          const hashRefreshToken = hashParams.get('refresh_token');
+          if (hashAccessToken && supabase && supabase.auth) {
+            try {
+              await supabase.auth.setSession({
+                access_token: hashAccessToken,
+                refresh_token: hashRefreshToken || ''
+              });
+            } catch (hashErr: any) {
+              console.warn('[auth/callback] Hash setSession notice:', hashErr.message);
+            }
+          }
+        }
+
         // 3. Retrieve established Supabase session
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !sessionData?.session?.user) {

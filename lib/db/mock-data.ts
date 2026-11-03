@@ -516,6 +516,16 @@ export const initialSchools: School[] = [
 // Pre-configured Demo Users for Authentication
 export const demoUsers: (UserProfile & { password: string })[] = [
   {
+    id: 'usr-super-pankaj',
+    role: 'SUPER_ADMIN',
+    firstName: 'Pankaj',
+    lastName: 'Kumar',
+    email: 'pkvbspu2020@gmail.com',
+    password: 'password123',
+    designation: 'Chief Technology Officer / Super Admin',
+    isActive: true,
+  },
+  {
     id: 'usr-super',
     role: 'SUPER_ADMIN',
     firstName: 'Pankaj',

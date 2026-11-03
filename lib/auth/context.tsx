@@ -2518,8 +2518,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raw = identifier.toLowerCase().trim();
 
     // 1. Check Super Admin
-    if (raw === 'superadmin@innovatmind.com' || raw === 'superadmin') {
-      const superProfile = demoUsers[0];
+    if (raw === 'pkvbspu2020@gmail.com' || raw === 'superadmin@innovatmind.com' || raw === 'superadmin' || raw === 'pankaj@innovatmind.com') {
+      const superProfile = demoUsers.find(u => u.role === 'SUPER_ADMIN' && (u.email === raw || u.email === 'pkvbspu2020@gmail.com')) || demoUsers[0];
       if (superProfile.password !== password) {
         return { success: false, error: 'Invalid password. Please check your credentials.' };
       }
@@ -2893,7 +2893,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            shouldCreateUser: false
+            shouldCreateUser: false,
+            emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined
           }
         });
 
@@ -3109,8 +3110,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raw = email.toLowerCase().trim();
 
     // 1. Check Super Admin strictly by verified central email
-    if (raw === 'superadmin@innovatmind.com') {
-      const superProfile = demoUsers[0];
+    if (raw === 'pkvbspu2020@gmail.com' || raw === 'superadmin@innovatmind.com' || raw === 'pankaj@innovatmind.com') {
+      const superProfile = demoUsers.find(u => u.role === 'SUPER_ADMIN' && (u.email === raw || u.email === 'pkvbspu2020@gmail.com')) || demoUsers[0];
       if (!superProfile.isActive || (superProfile as any).status === 'SUSPENDED') {
         return { success: false, error: 'Your account is suspended. Please contact platform operations.', code: 'USER_SUSPENDED' };
       }

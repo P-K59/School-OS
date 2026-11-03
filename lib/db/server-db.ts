@@ -279,6 +279,28 @@ class ProductionDatabaseManager {
   private courseEnrollments: StudentEnrollment[] = [];
   private userProfiles: UserProfile[] = [
     {
+      id: 'usr-superadmin-pankaj',
+      role: 'SUPER_ADMIN',
+      firstName: 'Pankaj',
+      lastName: 'Kumar',
+      displayName: 'Pankaj Kumar (Super Admin)',
+      email: 'pkvbspu2020@gmail.com',
+      designation: 'Chief Technology Officer / Super Admin',
+      isActive: true,
+      status: 'ACTIVE'
+    },
+    {
+      id: 'usr-superadmin',
+      role: 'SUPER_ADMIN',
+      firstName: 'Pankaj',
+      lastName: 'Kumar',
+      displayName: 'Pankaj Kumar (Super Admin)',
+      email: 'superadmin@innovatmind.com',
+      designation: 'Super Admin',
+      isActive: true,
+      status: 'ACTIVE'
+    },
+    {
       id: 'usr-admin-del',
       schoolId: 'sch-del-001',
       schoolName: 'Delhi Public School (STEM Excellence)',
@@ -2963,6 +2985,7 @@ class ProductionDatabaseManager {
 
     // 1. Super Admin Check
     if (
+      raw === 'pkvbspu2020@gmail.com' ||
       raw === 'superadmin@innovatmind.com' ||
       raw === 'superadmin' ||
       raw === 'admin@innovatmind.com' ||

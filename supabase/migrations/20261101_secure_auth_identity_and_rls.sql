@@ -107,3 +107,17 @@ BEGIN
 END;
 $$;
 
+-- 9. Seed / Ensure Super Admin Profile for pkvbspu2020@gmail.com
+INSERT INTO public.profiles (
+    role, first_name, last_name, email, phone, designation, is_active
+) VALUES (
+    'SUPER_ADMIN', 'Pankaj', 'Kumar', 'pkvbspu2020@gmail.com', '+91 99000 00001', 'Chief Technology Officer / Super Admin', TRUE
+)
+ON CONFLICT (email) DO UPDATE SET
+    role = 'SUPER_ADMIN',
+    first_name = 'Pankaj',
+    last_name = 'Kumar',
+    designation = 'Chief Technology Officer / Super Admin',
+    is_active = TRUE;
+
+

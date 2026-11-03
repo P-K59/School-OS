@@ -31,6 +31,14 @@ import {
 export default function LandingPage() {
   const router = useRouter();
   const { loginAsRole, setDataMode } = useAuth();
+
+  // If user arrived via Supabase Magic Link hash fragment on root, seamlessly route to /auth/callback
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
+      router.replace(`/auth/callback${window.location.hash}`);
+    }
+  }, [router]);
+
   const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Hindi'>('English');
